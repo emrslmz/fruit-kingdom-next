@@ -39,13 +39,13 @@ export default class MenuScene extends BaseScene {
 
     this.bannerH = setupBannerDock(this)
     const headerBottom = this.buildHeader()
-    const playTop = this.buildPlayButton()
+    const navTop = this.buildBottomBar()
     this.buildRails(headerBottom)
 
     const levelUpFrom = this.registry.get('levelUpFrom')
     this.registry.remove('levelUpFrom')
     const hop = !this.sceneData.instant && levelUpFrom === p.profile.gameLevel - 1
-    this.buildRoad(headerBottom + 8, playTop, p.profile.gameLevel, hop)
+    this.buildRoad(headerBottom + 8, navTop, p.profile.gameLevel, hop)
   }
 
   // ---------------------------------------------------------------------------
@@ -84,9 +84,7 @@ export default class MenuScene extends BaseScene {
   }
 
   // ---------------------------------------------------------------------------
-  // Yan butonlar
-  //   sol: Ayarlar, toplam yıldız, Envanter, Market
-  //   sağ: Reklamları Kaldır, Siparişler, Kasalar
+  // Yan butonlar: ayarlar + toplam yıldız | reklam kaldır
   // ---------------------------------------------------------------------------
   buildRails(top) {
     const L = this.L
@@ -94,14 +92,13 @@ export default class MenuScene extends BaseScene {
     const size = 52
     const leftX = L.colX + 14 + size / 2
     const rightX = L.colX + L.colW - 14 - size / 2
-    const y0 = top + 16 + size / 2
-    const row = y => y0 + 140 + y * 84 // Envanter/Market ve Siparişler/Kasalar satırları
+    const startY = top + 16 + size / 2
     const items = []
 
-    items.push(this.railButton(leftX, y0, { color: 'blue', icon: 'ic_cog', label: t('settings'), onClick: () => this.go(SCENES.Settings) }))
+    items.push(this.railButton(leftX, startY, { color: 'blue', icon: 'ic_cog', label: t('settings'), onClick: () => this.go(SCENES.Settings) }))
 
     // toplam yıldız
-    const stars = this.add.container(leftX + 8, y0 + size + 26)
+    const stars = this.add.container(leftX + 8, startY + size + 26)
     const sg = this.add.graphics()
     drawPill(sg, 0, 0, 74, 32, { fill: 0x1D1006, alpha: 0.75, border: 0x1D1006 })
     const icon = this.add.image(-26, -1, 'ic_star').setScale(40 / 256)
@@ -113,7 +110,7 @@ export default class MenuScene extends BaseScene {
     items.push(stars)
 
     if (!p.settings.adsRemoved) {
-      const btn = this.railButton(rightX, y0, {
+      const btn = this.railButton(rightX, startY, {
         color: 'red',
         icon: 'ic_remove_ads',
         label: t('remove_ads'),
@@ -121,25 +118,7 @@ export default class MenuScene extends BaseScene {
       })
       items.push(btn)
     }
-
-    const nav = [
-      { key: 'inventory', icon: 'ic_backpack', scene: SCENES.Inventory, x: leftX, y: row(0) },
-      { key: 'shop', icon: 'ic_shop', scene: SCENES.Shop, x: leftX, y: row(1) },
-      { key: 'orders', icon: 'ic_order', scene: SCENES.Orders, x: rightX, y: row(0) },
-      { key: 'cases', icon: 'case_gear', scene: SCENES.Cases, x: rightX, y: row(1) },
-    ]
-    nav.forEach((item) => {
-      const b = this.railButton(item.x, item.y, { color: 'cream', icon: item.icon, label: t(item.key), onClick: () => this.go(item.scene) })
-      if (item.key === 'orders') {
-        const ready = (p.orders || []).filter(o => o && this.canFulfill(o)).length
-        if (ready)
-          b.setBadge(ready, { color: 0x16BB77, stroke: '#04502f', size: 22 })
-      }
-      if (item.key === 'cases' && p.canOpenFreeCase())
-        b.setBadge('!', { color: 0xEE2747, size: 22 })
-      items.push(b)
-    })
-    this.popIn(items, { delay: 200, stagger: 50 })
+    this.popIn(items, { delay: 200, stagger: 70 })
   }
 
   railButton(x, y, o) {
@@ -155,32 +134,85 @@ export default class MenuScene extends BaseScene {
   }
 
   // ---------------------------------------------------------------------------
-  // Alt: tek, sade OYNA butonu
+  // Alt çubuk: Envanter | Market | OYNA | Siparişler | Kasalar
+  // OYNA ortada, diğer karolarla aynı hizada, sade sarı buton.
   // ---------------------------------------------------------------------------
-  buildPlayButton() {
+  buildBottomBar() {
     const L = this.L
-    const playH = 70
-    const playW = Math.min(300, L.colW - 60)
-    const playY = L.bottom - this.bannerH - 14 - playH / 2
-    const play = new Button(this, L.cx, playY, {
+    const p = player()
+    const navH = 86
+    const bottom = L.bottom - this.bannerH
+    const top = bottom - navH
+    // banner varsa çubuk banner yuvasının üstünde biter, yoksa ekranın altına kadar iner
+    const fullH = (this.bannerH ? bottom : L.dh) - top
+
+    const nav = this.add.container(0, 0)
+    const shadow = this.add.graphics()
+    drawVerticalFade(shadow, 0, top - 16, L.dw, 16, 0x000000, 0, 0.32)
+    const tile = this.add.tileSprite(0, top, L.dw / 0.5, fullH / 0.5, 'bg_wood').setOrigin(0).setScale(0.5)
+    const g = this.add.graphics()
+    g.fillStyle(0x2B180A, 0.42).fillRect(0, top, L.dw, fullH)
+    drawVerticalFade(g, 0, top + 6, L.dw, 18, 0x000000, 0.22, 0)
+    g.fillStyle(0x3B230D).fillRect(0, top, L.dw, 5)
+    g.fillStyle(0xD9A066, 0.55).fillRect(0, top + 5, L.dw, 1.5)
+    nav.add([shadow, tile, g])
+
+    const playW = Math.min(132, L.colW * 0.32)
+    const playH = 62
+    const play = new Button(this, L.cx, top + navH / 2 + 1, {
       w: playW,
       h: playH,
       color: 'yellow',
       label: t('play'),
-      labelSize: 32,
-      glyph: 'play',
-      glyphSize: 26,
+      labelSize: 28,
       onClick: () => this.startGame(),
     })
-    this.root.add(play)
+    nav.add(play)
     this.playButton = play
 
+    // iki yanda ikişer karo
+    const sideW = (L.colW - 12 - playW - 16) / 2
+    const slotW = sideW / 2
+    const tileW = Math.min(64, slotW - 6)
+    const tileH = 58
+    const tileY = top + 10 + tileH / 2
+    const items = [
+      { key: 'inventory', icon: 'ic_backpack', scene: SCENES.Inventory },
+      { key: 'shop', icon: 'ic_shop', scene: SCENES.Shop },
+      { key: 'orders', icon: 'ic_order', scene: SCENES.Orders },
+      { key: 'cases', icon: 'case_gear', scene: SCENES.Cases },
+    ]
+    items.forEach((item, i) => {
+      const x = i < 2
+        ? L.colX + 6 + slotW * (i + 0.5)
+        : L.cx + playW / 2 + 8 + slotW * (i - 2 + 0.5)
+      const b = new Button(this, x, tileY, {
+        w: tileW,
+        h: tileH,
+        color: 'cream',
+        radius: 15,
+        icon: item.icon,
+        iconSize: tileH * 0.78,
+        onClick: () => this.go(item.scene),
+      })
+      const label = makeText(this, x, top + navH - 13, t(item.key), { size: 13, stroke: '#1d1006', strokeW: 3.5, shadowY: 1.5 })
+      fitText(label, slotW - 2)
+      nav.add([b, label])
+      if (item.key === 'orders') {
+        const ready = (p.orders || []).filter(o => o && this.canFulfill(o)).length
+        if (ready)
+          b.setBadge(ready, { color: 0x16BB77, stroke: '#04502f', size: 22 })
+      }
+      if (item.key === 'cases' && p.canOpenFreeCase())
+        b.setBadge('!', { color: 0xEE2747, size: 22 })
+    })
+    this.root.add(nav)
+
     if (!this.sceneData.instant) {
-      const y = play.y
-      play.y = y + playH + 40
-      this.tweens.add({ targets: play, y, duration: 480, delay: 150, ease: 'Back.easeOut' })
+      nav.y = fullH + 30
+      this.tweens.add({ targets: nav, y: 0, duration: 480, delay: 100, ease: 'Back.easeOut' })
     }
-    return playY - playH / 2 - 8
+    return top - 6
   }
 
   canFulfill(order) {

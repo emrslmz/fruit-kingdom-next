@@ -9,7 +9,7 @@ ekrana bağlı olduğunun envanteridir. Arayüz tamamen Phaser'a taşındı (bkz
 | Sahne | Dosya | İçerik |
 | --- | --- | --- |
 | Yükleme | `scenes/PreloadScene.js` | logo, rastgele ipucu, ilerleme çubuğu |
-| Ana menü | `scenes/MenuScene.js` | para birimleri, seviye yolu (harita, kazanılan yıldızlarla) + maskot, yan raylar (Ayarlar, toplam yıldız, Envanter, Market / Reklam Kaldır, Siparişler, Kasalar), OYNA butonu, banner yuvası |
+| Ana menü | `scenes/MenuScene.js` | para birimleri, seviye yolu (harita, kazanılan yıldızlarla) + maskot, yan raylar (Ayarlar, toplam yıldız / Reklam Kaldır), alt çubuk (Envanter, Market, OYNA, Siparişler, Kasalar), banner yuvası |
 | Oyun | `scenes/GameScene.js` | tahta, sepet, süre sayacı, yıldız çubuğu, hedef çipleri, güçlendirmeler, duraklat, süre doldu/sepet doldu teklifi, yıldızlı sonuç pencereleri, banner yuvası |
 | Ayarlar | `scenes/SettingsScene.js` | müzik, ses, titreşim, bildirim, ipucu, dil seçimi, gizlilik politikası |
 | Market | `scenes/ShopScene.js` | güçlendirmeleri elmasla adet seçerek alma |
@@ -109,11 +109,11 @@ her 10 seviyede taç. Geçilen seviyelere dokunulunca sadece zıplar — tekrar 
 Seviye geçip menüye dönünce kilit kırılır ve maskot yeni seviyeye zıplar
 (`registry.levelUpFrom`).
 
-- **Sol ray:** Ayarlar, toplam yıldız (`playerStore.totalStars`), Envanter, Market.
-- **Sağ ray:** Reklamları Kaldır, Siparişler (teslim edilebilir sipariş sayısı rozeti),
-  Kasalar (ücretsiz kasa hazırsa "!").
-- **Alt:** tek, sade sarı **OYNA** butonu (alt çubuk yok); altında banner yuvası.
-  Yolun sığmayan düğümleri çizilmez, patika butona doğru soluklaşır.
+- **Sol ray:** Ayarlar, toplam yıldız (`playerStore.totalStars`). **Sağ ray:** Reklamları Kaldır.
+- **Alt çubuk:** Envanter, Market, ortada sade sarı **OYNA** (karolarla aynı hizada),
+  Siparişler (teslim edilebilir sipariş sayısı rozeti), Kasalar (ücretsiz kasa hazırsa
+  "!"); altında banner yuvası. Yolun sığmayan düğümleri çizilmez, patika çubuğa doğru
+  soluklaşır.
 
 ## 9. Süre ve Yıldızlar — `game/logic/timing.js`
 
