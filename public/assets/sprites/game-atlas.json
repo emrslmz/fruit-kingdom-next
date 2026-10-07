@@ -1,0 +1,481 @@
+{
+	"textures": [
+		{
+			"image": "game-atlas",
+			"format": "RGBA8888",
+			"size": {
+				"w": 2142,
+				"h": 854
+			},
+			"scale": 1,
+			"frames": [
+				{
+					"filename": "bush2.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 2,
+						"y": 22,
+						"w": 251,
+						"h": 224
+					},
+					"frame": {
+						"x": 0,
+						"y": 0,
+						"w": 251,
+						"h": 224
+					}
+				},
+				{
+					"filename": "bush1.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 6,
+						"y": 36,
+						"w": 248,
+						"h": 187
+					},
+					"frame": {
+						"x": 251,
+						"y": 0,
+						"w": 248,
+						"h": 187
+					}
+				},
+				{
+					"filename": "carrot.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 6,
+						"y": 13,
+						"w": 242,
+						"h": 243
+					},
+					"frame": {
+						"x": 499,
+						"y": 0,
+						"w": 242,
+						"h": 243
+					}
+				},
+				{
+					"filename": "bisquit_free.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 6,
+						"y": 9,
+						"w": 239,
+						"h": 236
+					},
+					"frame": {
+						"x": 251,
+						"y": 187,
+						"w": 239,
+						"h": 236
+					}
+				},
+				{
+					"filename": "freeze_box.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 14,
+						"y": 7,
+						"w": 237,
+						"h": 238
+					},
+					"frame": {
+						"x": 0,
+						"y": 224,
+						"w": 237,
+						"h": 238
+					}
+				},
+				{
+					"filename": "banana.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 8,
+						"y": 22,
+						"w": 231,
+						"h": 213
+					},
+					"frame": {
+						"x": 741,
+						"y": 0,
+						"w": 231,
+						"h": 213
+					}
+				},
+				{
+					"filename": "watermelon.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 20,
+						"y": 42,
+						"w": 225,
+						"h": 190
+					},
+					"frame": {
+						"x": 972,
+						"y": 0,
+						"w": 225,
+						"h": 190
+					}
+				},
+				{
+					"filename": "grape.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 7,
+						"y": 14,
+						"w": 223,
+						"h": 242
+					},
+					"frame": {
+						"x": 1197,
+						"y": 0,
+						"w": 223,
+						"h": 242
+					}
+				},
+				{
+					"filename": "bisquit.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 19,
+						"y": 14,
+						"w": 221,
+						"h": 226
+					},
+					"frame": {
+						"x": 972,
+						"y": 190,
+						"w": 221,
+						"h": 226
+					}
+				},
+				{
+					"filename": "strawberry.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 21,
+						"y": 18,
+						"w": 217,
+						"h": 219
+					},
+					"frame": {
+						"x": 741,
+						"y": 242,
+						"w": 217,
+						"h": 219
+					}
+				},
+				{
+					"filename": "cherry.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 18,
+						"y": 16,
+						"w": 212,
+						"h": 221
+					},
+					"frame": {
+						"x": 490,
+						"y": 416,
+						"w": 212,
+						"h": 221
+					}
+				},
+				{
+					"filename": "bush5.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 46,
+						"y": 75,
+						"w": 153,
+						"h": 141
+					},
+					"frame": {
+						"x": 490,
+						"y": 243,
+						"w": 153,
+						"h": 141
+					}
+				},
+				{
+					"filename": "apple.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 31,
+						"y": 45,
+						"w": 210,
+						"h": 194
+					},
+					"frame": {
+						"x": 237,
+						"y": 423,
+						"w": 210,
+						"h": 194
+					}
+				},
+				{
+					"filename": "lemon.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 31,
+						"y": 28,
+						"w": 209,
+						"h": 211
+					},
+					"frame": {
+						"x": 0,
+						"y": 462,
+						"w": 209,
+						"h": 211
+					}
+				},
+				{
+					"filename": "coconut.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 29,
+						"y": 24,
+						"w": 200,
+						"h": 204
+					},
+					"frame": {
+						"x": 209,
+						"y": 617,
+						"w": 200,
+						"h": 204
+					}
+				},
+				{
+					"filename": "orange.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 16,
+						"y": 44,
+						"w": 199,
+						"h": 181
+					},
+					"frame": {
+						"x": 0,
+						"y": 673,
+						"w": 199,
+						"h": 181
+					}
+				},
+				{
+					"filename": "pulm.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 15,
+						"y": 17,
+						"w": 194,
+						"h": 239
+					},
+					"frame": {
+						"x": 1420,
+						"y": 0,
+						"w": 194,
+						"h": 239
+					}
+				},
+				{
+					"filename": "berry.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 34,
+						"y": 37,
+						"w": 189,
+						"h": 187
+					},
+					"frame": {
+						"x": 1614,
+						"y": 0,
+						"w": 189,
+						"h": 187
+					}
+				},
+				{
+					"filename": "bamboo.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 52,
+						"y": 8,
+						"w": 171,
+						"h": 241
+					},
+					"frame": {
+						"x": 1803,
+						"y": 0,
+						"w": 171,
+						"h": 241
+					}
+				},
+				{
+					"filename": "pear.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 53,
+						"y": 11,
+						"w": 168,
+						"h": 231
+					},
+					"frame": {
+						"x": 1974,
+						"y": 0,
+						"w": 168,
+						"h": 231
+					}
+				},
+				{
+					"filename": "bush4.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 64,
+						"y": 68,
+						"w": 129,
+						"h": 110
+					},
+					"frame": {
+						"x": 1974,
+						"y": 231,
+						"w": 129,
+						"h": 110
+					}
+				},
+				{
+					"filename": "bush3.png",
+					"rotated": false,
+					"trimmed": true,
+					"sourceSize": {
+						"w": 256,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 64,
+						"y": 75,
+						"w": 125,
+						"h": 101
+					},
+					"frame": {
+						"x": 1614,
+						"y": 187,
+						"w": 125,
+						"h": 101
+					}
+				}
+			]
+		}
+	],
+	"meta": {
+		"app": "http://free-tex-packer.com",
+		"version": "0.6.7"
+	}
+}

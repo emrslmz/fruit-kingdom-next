@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "esnext", // Modern ES özelliklerini hedefler
+    "jsx": "preserve", // JSX ile ilgili ayarlar (Vue için genelde preserve kullanılır)
+    "lib": ["esnext", "dom"], // Kullanılacak standart kütüphaneler
+    "useDefineForClassFields": true, // Vue 3'teki tanım yöntemleri için gerekli
+    "experimentalDecorators": true, // Dekoratör desteği
+    "baseUrl": ".", // Kök dizini belirtir
+    "module": "esnext",
+    "moduleResolution": "node", // Node.js tarzı modül çözümleme
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "resolveJsonModule": true, // JSON dosyalarını import etmek için
+    "types": ["vite/client"], // Vite ve Vue ile ilgili özel tipler eklenir
+    "strict": true, // TypeScript'in sıkı modunu etkinleştirir
+    "noImplicitAny": false, // `any` tipiyle ilgili hataları kaldırır
+    "sourceMap": true, // Debugging için gerekli
+    "esModuleInterop": true, // CommonJS ve ES modülleri arasında uyumluluk sağlar
+    "skipLibCheck": true // Harici kütüphanelerle ilgili tip kontrolünü atlar
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.tsx",
+    "src/**/*.vue",
+    "src/**/*.js" // Eğer JS dosyalarınız varsa bu da eklenebilir
+  ],
+  "exclude": ["node_modules"] // Harici kütüphaneleri dışlar
+}

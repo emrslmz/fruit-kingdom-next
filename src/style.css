@@ -1,0 +1,149 @@
+:root {
+  overflow-x: hidden; /* Yatay overflow'u engeller */
+  overflow-y: hidden; /* Dikey overflow'u engeller */
+  padding: 0;
+  margin: 0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  font-family: 'Agu', sans-serif;
+  --ion-font-family: 'Agu', cursive;
+  --cartoon-primary: #1e40af;
+  --cartoon-secondary: #3b82f6;
+  --cartoon-accent: #f59e0b;
+  --cartoon-success: #34d399;
+  --cartoon-danger: #ef4444;
+  --cartoon-background: linear-gradient(135deg, #3b82f6, #1e40af);
+  --cartoon-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  --cartoon-border-radius: 16px;
+
+  touch-action: manipulation;
+  user-select: none;
+
+  -ms-touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+@font-face {
+  font-family: "LuckiestGuy";
+  src: url("/fonts/LuckiestGuy-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Bungee";
+  src: url("/fonts/Bungee-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Agu";
+  src: url("/fonts/dr_agu.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+
+/* iOS tarzı scrollbar */
+::-webkit-scrollbar {
+  width: 1px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 0px;
+  border: 0.2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+img {
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+.titre{
+  font-family: "Agu",sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  color:white;
+  text-shadow: -1px 0 1px #584a3b,
+  1px 0 1px #582E00,
+  0 -1px 1px #582E00,
+  0 4px 1px #582E00,
+  -2px 4px 1px #582E00,
+  2px 3px 2px #582E00;
+}
+
+.titre-light {
+  font-family: "Agu", sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  color: black;
+  text-shadow: -1px 0 1px #f8f0e3,
+               1px 0 1px #f8f0e3,
+               0 -1px 1px #f8f0e3,
+               0 4px 1px #f8f0e3,
+               -2px 4px 1px #f8f0e3,
+               2px 3px 2px #f8f0e3;
+}
+
+
+
+.no-zoom {
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.home-shine-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.home-shine-effect::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -75%;
+  width: 50%;
+  height: 200%;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(25deg);
+  /* Animasyon adını, süresini ve döngüsünü belirliyoruz */
+  animation: shine 5s infinite;
+  /* Animasyon gecikmesini bir CSS değişkeninden alıyoruz */
+  animation-delay: var(--shine-delay, 2s);
+}
+
+@keyframes shine {
+  0% {
+    left: -75%;
+  }
+  40% {
+    /* Hızlıca geçip gitmesi için bitiş yüzdesini düşürdük */
+    left: 125%;
+  }
+  100% {
+    /* Bir sonraki animasyona kadar görünmemesi için pozisyonunu korur */
+    left: 125%;
+  }
+}
+
