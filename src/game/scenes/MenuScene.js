@@ -45,7 +45,7 @@ export default class MenuScene extends BaseScene {
     const levelUpFrom = this.registry.get('levelUpFrom')
     this.registry.remove('levelUpFrom')
     const hop = !this.sceneData.instant && levelUpFrom === p.profile.gameLevel - 1
-    this.buildRoad(headerBottom + 8, navTop - 6, p.profile.gameLevel, hop)
+    this.buildRoad(headerBottom + 8, navTop, p.profile.gameLevel, hop)
   }
 
   // ---------------------------------------------------------------------------
@@ -134,73 +134,92 @@ export default class MenuScene extends BaseScene {
   }
 
   // ---------------------------------------------------------------------------
-  // Alt çubuk: Envanter | Market | OYNA | Siparişler | Kasalar
+  // Alt kısım: büyük OYNA butonu + gezinme çubuğu (Envanter | Market | Siparişler | Kasalar)
   // ---------------------------------------------------------------------------
   buildBottomBar() {
     const L = this.L
     const p = player()
-    const barH = 84
+    const navH = 86
     const bottom = L.bottom - this.bannerH
-    const top = bottom - barH
-    const bar = this.add.container(0, 0)
-    // banner varsa çubuk banner şeridinin üstünde biter, yoksa ekranın altına kadar iner
+    const top = bottom - navH
+    // banner varsa çubuk banner yuvasının üstünde biter, yoksa ekranın altına kadar iner
     const fullH = (this.bannerH ? bottom : L.dh) - top
-    const tile = this.add.tileSprite(0, top, L.dw / 0.5, fullH / 0.5, 'bg_wood').setOrigin(0).setScale(0.5)
-    const edge = this.add.graphics()
-    edge.fillStyle(0x000000, 0.25).fillRect(0, top - 5, L.dw, 5)
-    edge.fillStyle(0x3B230D).fillRect(0, top, L.dw, 4)
-    edge.fillStyle(0xFFFFFF, 0.12).fillRect(0, top + 4, L.dw, 3)
-    edge.fillStyle(0x000000, 0.12).fillRect(0, top, L.dw, fullH)
-    bar.add([tile, edge])
 
-    const slotW = Math.min(L.colW / 5, 96)
-    const btn = Math.min(54, slotW - 14)
-    const cy = top + barH / 2 - 8
+    const nav = this.add.container(0, 0)
+    const shadow = this.add.graphics()
+    drawVerticalFade(shadow, 0, top - 16, L.dw, 16, 0x000000, 0, 0.32)
+    const tile = this.add.tileSprite(0, top, L.dw / 0.5, fullH / 0.5, 'bg_wood').setOrigin(0).setScale(0.5)
+    const g = this.add.graphics()
+    g.fillStyle(0x2B180A, 0.42).fillRect(0, top, L.dw, fullH)
+    drawVerticalFade(g, 0, top + 6, L.dw, 18, 0x000000, 0.22, 0)
+    g.fillStyle(0x3B230D).fillRect(0, top, L.dw, 5)
+    g.fillStyle(0xD9A066, 0.55).fillRect(0, top + 5, L.dw, 1.5)
+    nav.add([shadow, tile, g])
+
     const items = [
       { key: 'inventory', icon: 'ic_backpack', scene: SCENES.Inventory },
       { key: 'shop', icon: 'ic_shop', scene: SCENES.Shop },
-      null,
       { key: 'orders', icon: 'ic_order', scene: SCENES.Orders },
       { key: 'cases', icon: 'case_gear', scene: SCENES.Cases },
     ]
+    const slotW = Math.min((L.colW - 12) / items.length, 104)
+    const tileW = Math.min(68, slotW - 14)
+    const tileH = 60
+    const tileY = top + 10 + tileH / 2
     items.forEach((item, i) => {
-      if (!item)
-        return
-      const x = L.cx + (i - 2) * slotW
-      const b = new Button(this, x, cy, { w: btn, h: btn, shape: 'round', color: 'grey', icon: item.icon, iconSize: btn * 0.7, onClick: () => this.go(item.scene) })
-      const label = makeText(this, x, cy + btn / 2 + 9, t(item.key), { size: 12, stroke: '#3b230d', strokeW: 3.5, shadowY: 1.5 })
-      fitText(label, slotW - 4)
-      bar.add([b, label])
+      const x = L.cx + (i - (items.length - 1) / 2) * slotW
+      const b = new Button(this, x, tileY, {
+        w: tileW,
+        h: tileH,
+        color: 'cream',
+        radius: 16,
+        icon: item.icon,
+        iconSize: tileH * 0.78,
+        onClick: () => this.go(item.scene),
+      })
+      const label = makeText(this, x, top + navH - 13, t(item.key), { size: 13, stroke: '#1d1006', strokeW: 3.5, shadowY: 1.5 })
+      fitText(label, slotW - 6)
+      nav.add([b, label])
       if (item.key === 'orders') {
         const ready = (p.orders || []).filter(o => o && this.canFulfill(o)).length
         if (ready)
-          b.setBadge(ready, { color: 0x16BB77, stroke: '#04502f' })
+          b.setBadge(ready, { color: 0x16BB77, stroke: '#04502f', size: 24 })
       }
       if (item.key === 'cases' && p.canOpenFreeCase())
-        b.setBadge('!', { color: 0xEE2747 })
+        b.setBadge('!', { color: 0xEE2747, size: 24 })
     })
+    this.root.add(nav)
 
-    // ortada yükseltilmiş OYNA butonu
-    const play = new Button(this, L.cx, top - 2, {
-      w: Math.min(140, slotW * 1.5),
-      h: 74,
-      color: 'green',
+    // büyük OYNA butonu: çubuğun üstünde, yoldan ayrı
+    const playH = 74
+    const playW = Math.min(250, L.colW - 120)
+    const playY = top - 16 - playH / 2
+    const glow = this.add.image(L.cx, playY + 4, 'fx_glow').setTint(0xFFE27A).setAlpha(0.5)
+    glow.setDisplaySize(playW * 1.5, playH * 2.1)
+    this.tweens.add({ targets: glow, alpha: 0.25, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    const play = new Button(this, L.cx, playY, {
+      w: playW,
+      h: playH,
+      color: 'yellow',
+      radius: 24,
       label: t('play'),
-      labelSize: 30,
+      labelSize: 34,
       glyph: 'play',
-      glyphSize: 26,
+      glyphSize: 28,
       pulse: true,
       onClick: () => this.startGame(),
     })
-    bar.add(play)
+    this.root.add([glow, play])
     this.playButton = play
-    this.root.add(bar)
 
     if (!this.sceneData.instant) {
-      bar.y = barH + 40
-      this.tweens.add({ targets: bar, y: 0, duration: 480, delay: 100, ease: 'Back.easeOut' })
+      nav.y = fullH + 30
+      this.tweens.add({ targets: nav, y: 0, duration: 480, delay: 100, ease: 'Back.easeOut' })
+      play.setScale(0)
+      glow.setAlpha(0)
+      this.tweens.add({ targets: play, scale: 1, duration: 450, delay: 380, ease: 'Back.easeOut' })
     }
-    return top - 40
+    return playY - playH / 2 - 4
   }
 
   canFulfill(order) {
@@ -231,13 +250,20 @@ export default class MenuScene extends BaseScene {
     road.setMask(maskG.createGeometryMask())
     this.events.once('shutdown', () => maskG.destroy())
 
-    const first = Math.max(1, current - ROAD_BEHIND)
+    // alt kenara sığmayan (yarım kesilecek) tamamlanmış düğümler çizilmez; patika
+    // oraya doğru soluklaşarak devam eder
+    const fits = lv => posOf(lv).y + 27 + 12 <= areaBottom + 12
+    let first = Math.max(1, current - ROAD_BEHIND)
+    while (first < current && !fits(first))
+      first++
+    const trailFirst = Math.max(1, first - 1)
     const last = current + ROAD_AHEAD
+    const fadeFrom = areaBottom - 50
 
     // patika: düğümler arasından geçen noktalı iz
     const trail = this.add.graphics()
     road.add(trail)
-    for (let lv = first; lv < last; lv++) {
+    for (let lv = trailFirst; lv < last; lv++) {
       const a = posOf(lv)
       const b = posOf(lv + 1)
       const done = lv < current
@@ -251,8 +277,11 @@ export default class MenuScene extends BaseScene {
       pts.forEach((pt, i) => {
         if (i === 0 || i === pts.length - 1)
           return
-        trail.fillStyle(0x3B230D, 0.35).fillCircle(pt.x, pt.y + 1.5, 4.2)
-        trail.fillStyle(done ? 0xFFF3C4 : 0xD9C7A3, done ? 0.95 : 0.7).fillCircle(pt.x, pt.y, 3.6)
+        const fade = Phaser.Math.Clamp(1 - (pt.y - fadeFrom) / 60, 0, 1)
+        if (fade <= 0)
+          return
+        trail.fillStyle(0x3B230D, 0.35 * fade).fillCircle(pt.x, pt.y + 1.5, 4.2)
+        trail.fillStyle(done ? 0xFFF3C4 : 0xD9C7A3, (done ? 0.95 : 0.7) * fade).fillCircle(pt.x, pt.y, 3.6)
       })
     }
 

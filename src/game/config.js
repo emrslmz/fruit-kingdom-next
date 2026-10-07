@@ -24,6 +24,7 @@ export const BTN = {
   grey: { rim: 0x989AAF, light: 0xFFFFFF, face: 0xDADCE7, depth: 0x666880, stroke: '#3f4152' },
   purple: { rim: 0x6D28D9, light: 0xB79CFB, face: 0x8B5CF6, depth: 0x4C1D95, stroke: '#3b0f7a' },
   wood: { rim: 0x6B3D17, light: 0xD9A066, face: 0xA8672F, depth: 0x3B230D, stroke: '#3b230d' },
+  cream: { rim: 0x8A5A2B, light: 0xFFFFFF, face: 0xFCEEC9, depth: 0x3B230D, stroke: '#6b4724' },
   disabled: { rim: 0x9A9A9A, light: 0xD8D8D8, face: 0xBDBDBD, depth: 0x6F6F6F, stroke: '#555555' },
 }
 

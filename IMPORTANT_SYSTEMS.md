@@ -108,8 +108,10 @@ altlarında kazanılan yıldızlar (1–3); mevcut seviye altın + maskot, sonra
 her 10 seviyede taç. Geçilen seviyelere dokunulunca sadece zıplar — tekrar oynanmaz.
 Seviye geçip menüye dönünce kilit kırılır ve maskot yeni seviyeye zıplar
 (`registry.levelUpFrom`). Sol ray: Ayarlar + toplam yıldız (`playerStore.totalStars`).
-Sağ ray: Reklamları Kaldır. Alt çubuk: Envanter, Market, **OYNA**, Siparişler, Kasalar
-(ücretsiz kasa hazırsa "!"); altında banner yuvası.
+Sağ ray: Reklamları Kaldır. Altta büyük sarı **OYNA** butonu (yoldan ayrı, yolun
+sığmayan düğümleri çizilmez, patika soluklaşır), onun altında gezinme çubuğu: Envanter,
+Market, Siparişler (teslim edilebilir sipariş sayısı), Kasalar (ücretsiz kasa hazırsa
+"!"); en altta banner yuvası.
 
 ## 9. Süre ve Yıldızlar — `game/logic/timing.js`
 

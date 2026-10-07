@@ -1,3 +1,4 @@
+import Phaser from 'phaser'
 import { COLORS } from '../config'
 
 // Prosedürel çizim yardımcıları. Hepsi (0,0) merkezli çizer ve tasarım
@@ -123,10 +124,17 @@ export function drawSlot(g, x, y, size, o = {}) {
 
 /** Tam ekran dikey gradyan karartma (üst/alt kenarlarda okunabilirlik için). */
 export function drawVerticalFade(g, x, y, w, h, color, fromAlpha, toAlpha, steps = 16) {
+  if (g.scene?.sys.game.renderer.type === Phaser.WEBGL) {
+    // WebGL: tek parça, bantsız gradyan
+    g.fillGradientStyle(color, color, color, color, fromAlpha, fromAlpha, toAlpha, toAlpha)
+    g.fillRect(x, y, w, h)
+    return
+  }
+  // Canvas: üst üste binmeyen şeritler (binme, şerit sınırlarında koyu çizgi yapıyordu)
   const stepH = h / steps
   for (let i = 0; i < steps; i++) {
     const a = fromAlpha + (toAlpha - fromAlpha) * (i / (steps - 1))
-    g.fillStyle(color, a).fillRect(x, y + i * stepH, w, stepH + 0.5)
+    g.fillStyle(color, a).fillRect(x, y + i * stepH, w, stepH)
   }
 }
 
