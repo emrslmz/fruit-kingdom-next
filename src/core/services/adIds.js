@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core'
 
 /**
- * AdMob reklam birimi ID'leri.
+ * AdMob reklam birimi ID'leri. Oyunda şu an sadece `banner` kullanılıyor;
+ * geçiş/ödüllü birimler ileride gerekirse diye burada duruyor.
  *
  * PRODUCTION: senin AdMob hesabındaki gerçek birimler (ca-app-pub-3304037628561493).
  * TEST: Google'ın herkese açık örnek birimleri — geliştirirken gerçek reklam

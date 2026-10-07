@@ -16,8 +16,10 @@ src/game/
   core/layout.js      ekran → "tasarım birimi" dönüşümü, safe-area
   core/BaseScene.js   tüm ekranların tabanı (arka plan, üst çubuk, geçiş, geri tuşu)
   core/services.js    store/servis köprüsü: player(), shop(), t(), sfx(), haptic()
+  core/banner.js      alttaki banner reklam yuvası (Oyun ve Ana menü)
   logic/Board.js      oyun kuralları — saf model, Phaser'dan bağımsız
   logic/fruits.js     meyve türleri
+  logic/timing.js     seviye süresi ve yıldız eşikleri
   ui/                 Button, Modal, CurrencyBadge, Toggle, ScrollView, text, effects
   scenes/             Boot, Preload, Menu, Game, Settings, Shop, Inventory,
                       Orders, Cases, Purchase, Overlay (toast/alert/geçiş — hep en üstte)
@@ -65,26 +67,35 @@ Yeni ekranda bunları kullan; aynı görünümü elle yeniden çizme.
 2. `config.js → SCENES`'e adını, `index.js`'teki sahne listesine sınıfı ekle
    (`OverlayScene` listenin **sonunda** kalmalı).
 3. Büyük arka planı `preload()` içinde `queueBackground(this, 'bg_...')` ile yükle.
-4. Gezinme her zaman `this.go(SCENES.X, data)` ile (perde geçişi + geçiş reklamı
-   sayacı); geri davranışı için `onBack()`'i override et.
+4. Gezinme her zaman `this.go(SCENES.X, data)` ile (perde geçişi); geri davranışı
+   için `onBack()`'i override et.
 
 ## Oyun kuralları
 
 Kurallar `logic/Board.js` modelinde: 4 sütun, görünen her meyveye dokunulabilir,
 7 slotluk sepet, aynı türden 3 meyve eşleşir; çalı (dokununca açılır ve meyve
-alınır), buz (her dokunuş bir kademe kırar); Balyoz/Süpürge/Rüzgar güçlendirmeleri;
-50 elmasla devam (sepetteki son 3 meyve tahtaya döner). `GameScene` sadece modelin
-sonuçlarını canlandırır — kural değişikliğini modelde yap.
+alınır), buz (her dokunuş bir kademe kırar); Balyoz/Süpürge/Rüzgar güçlendirmeleri.
+`GameScene` sadece modelin sonuçlarını canlandırır — kural değişikliğini modelde yap.
+
+**Süre ve yıldızlar** (`logic/timing.js`): her seviyenin süresi meyve + buz sayısına,
+meyve türüne ve seviyeye göre hesaplanır (`levelTimeLimit`). Yıldız, toplanan
+meyve oranından: %40 → 1★ (seviyeyi geçmek için yeterli), %80 → 2★, tamamı → 3★
+(`starsFor`). Süre dolunca veya sepet dolunca o ana kadarki yıldızlar gösterilir;
+seviye başına bir kez 50 elmasla +20 sn (süre) / son 3 meyveyi tahtaya geri koyma
+(sepet) teklif edilir. Yıldızlar `playerStore.completeLevel(level, collected, stars)`
+ile `profile.levelData`'ya yazılır; geçilen seviyeye geri dönülmez (yolda sadece
+yıldızları görünür).
 
 ## Reklamlar
 
-AdMob mantığı `core/services/admobService.js`'te (onay formu, ATT, önden yükleme,
-banner yüksekliği, geçiş reklamı sıklığı); sahneler doğrudan değil
-`game/core/ads.js` üzerinden kullanır (`watchRewardedAd`, `canWatchAds`,
-`levelEndInterstitial`, `claimFreeDiamonds`…). Yeni bir ödüllü reklam yerleşimi
-eklerken bu yardımcıları kullan — yükleniyor göstergesi, müzik durdurma ve hata
-mesajı orada. Geliştirmede (web) gerçek reklam yok; Overlay sahnesi sahte bir
-reklam ekranı gösterir. Ayrıntı: `IMPORTANT_SYSTEMS.md` §2.
+Sadece **banner** reklam var (geçiş ve ödüllü reklamlar kaldırıldı). AdMob mantığı
+`core/services/admobService.js`'te (onay formu, ATT, banner gösterme/gizleme,
+gerçek yükseklik). Banner yalnızca Oyun ve Ana menüde, ekranın altında kendi
+ayrılmış yuvasında durur: sahne `build()` içinde `this.bannerH = setupBannerDock(this)`
+(`game/core/banner.js`) çağırır ve alt çubuğunu/rafını o yüksekliğin üstüne kurar —
+hiçbir buton banner'ın üstüne binmez. Diğer sahneler açılınca `BaseScene` banner'ı
+gizler. Geliştirmede (web) gerçek reklam yok; yuvada "AdMob Banner (test)" yer
+tutucusu çizilir. Ayrıntı: `IMPORTANT_SYSTEMS.md` §2.
 
 ## Geliştirme / test
 

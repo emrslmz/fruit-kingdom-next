@@ -6,7 +6,7 @@ import { purchaseService } from '@/core/services/PurchaseService'
 import { toastService } from '@/core/services/ToastService'
 import { queueBackground } from '../assets'
 import { BTN, SCENES } from '../config'
-import { AD_REWARDS, canWatchAds, claimFreeDiamonds } from '../core/ads'
+import { setupBannerDock } from '../core/banner'
 import BaseScene from '../core/BaseScene'
 import { player, sfx, t } from '../core/services'
 import Button from '../ui/Button'
@@ -37,6 +37,7 @@ export default class MenuScene extends BaseScene {
     this.addBackground('bg_level', { topShade: 0.4, bottomShade: 0.5 })
     this.addFallingLeaves()
 
+    this.bannerH = setupBannerDock(this)
     const headerBottom = this.buildHeader()
     const navTop = this.buildBottomBar()
     this.buildRails(headerBottom)
@@ -83,7 +84,7 @@ export default class MenuScene extends BaseScene {
   }
 
   // ---------------------------------------------------------------------------
-  // Yan butonlar: ayarlar | bedava elmas + reklam kaldır
+  // Yan butonlar: ayarlar + toplam yıldız | reklam kaldır
   // ---------------------------------------------------------------------------
   buildRails(top) {
     const L = this.L
@@ -92,41 +93,24 @@ export default class MenuScene extends BaseScene {
     const leftX = L.colX + 14 + size / 2
     const rightX = L.colX + L.colW - 14 - size / 2
     const startY = top + 16 + size / 2
-    const step = size + 30
     const items = []
 
     items.push(this.railButton(leftX, startY, { color: 'blue', icon: 'ic_cog', label: t('settings'), onClick: () => this.go(SCENES.Settings) }))
 
-    let ry = startY
-    if (canWatchAds()) {
-      const btn = this.railButton(rightX, ry, {
-        color: 'purple',
-        icon: 'ic_diamonds',
-        label: `+${AD_REWARDS.diamonds}`,
-        onClick: async () => {
-          btn.setDisabled(true)
-          const ok = await claimFreeDiamonds(this)
-          if (!this.sys.isActive())
-            return
-          btn.setDisabled(false)
-          if (ok) {
-            this.refreshCurrencies()
-            this.flyReward('ic_diamond', btn, this.currencyBadges.diamond)
-            btn.setBadge(player().adsLeftToday || null, { color: 0x16BB77, stroke: '#04502f' })
-          }
-        },
-      })
-      btn.setBadge(p.adsLeftToday || null, { color: 0x16BB77, stroke: '#04502f' })
-      // "video" işareti
-      const play = this.add.graphics()
-      play.fillStyle(0xFFFFFF).fillCircle(-size * 0.32, size * 0.24, 9)
-      play.fillStyle(0x8B5CF6).fillTriangle(-size * 0.32 - 3, size * 0.24 - 5, -size * 0.32 - 3, size * 0.24 + 5, -size * 0.32 + 5, size * 0.24)
-      btn.add(play)
-      items.push(btn)
-      ry += step
-    }
+    // toplam yıldız
+    const stars = this.add.container(leftX + 8, startY + size + 26)
+    const sg = this.add.graphics()
+    drawPill(sg, 0, 0, 74, 32, { fill: 0x1D1006, alpha: 0.75, border: 0x1D1006 })
+    const icon = this.add.image(-26, -1, 'ic_star').setScale(40 / 256)
+    const count = makeText(this, 10, 0, String(p.totalStars), { size: 18, color: '#ffd84a', stroke: '#1d1006', strokeW: 4 })
+    fitText(count, 40)
+    stars.add([sg, icon, count])
+    this.root.add(stars)
+    this.starCounter = count
+    items.push(stars)
+
     if (!p.settings.adsRemoved) {
-      const btn = this.railButton(rightX, ry, {
+      const btn = this.railButton(rightX, startY, {
         color: 'red',
         icon: 'ic_remove_ads',
         label: t('remove_ads'),
@@ -156,9 +140,11 @@ export default class MenuScene extends BaseScene {
     const L = this.L
     const p = player()
     const barH = 84
-    const top = L.bottom - barH
+    const bottom = L.bottom - this.bannerH
+    const top = bottom - barH
     const bar = this.add.container(0, 0)
-    const fullH = L.dh - top
+    // banner varsa çubuk banner şeridinin üstünde biter, yoksa ekranın altına kadar iner
+    const fullH = (this.bannerH ? bottom : L.dh) - top
     const tile = this.add.tileSprite(0, top, L.dw / 0.5, fullH / 0.5, 'bg_wood').setOrigin(0).setScale(0.5)
     const edge = this.add.graphics()
     edge.fillStyle(0x000000, 0.25).fillRect(0, top - 5, L.dw, 5)
@@ -349,7 +335,16 @@ export default class MenuScene extends BaseScene {
     fitText(label, r * 1.5)
     c.add(label)
 
-    if (state === 'done') {
+    const earned = state === 'done' ? player().levelStars(level) : 0
+    if (earned) {
+      for (let i = 0; i < 3; i++) {
+        const star = this.add.image((i - 1) * 15, r + 6 - (i === 1 ? 4 : 0), 'ic_star').setScale(19 / 256)
+        if (i >= earned)
+          star.setTint(0x555555).setAlpha(0.85)
+        c.add(star)
+      }
+    }
+    else if (state === 'done') {
       const check = this.add.graphics()
       const cx = r * 0.72
       const cy = -r * 0.72
@@ -463,25 +458,6 @@ export default class MenuScene extends BaseScene {
     this.bgLayer.add(shade)
   }
 
-  /** Ödül ikonlarını butondan para rozetine uçurur. */
-  flyReward(icon, fromObj, badge) {
-    const s = this.L.s
-    const m = fromObj.getWorldTransformMatrix()
-    const target = badge.getIconWorldPoint()
-    for (let i = 0; i < 5; i++) {
-      const img = this.add.image(m.tx / s, m.ty / s, icon).setScale(30 / 256)
-      this.root.add(img)
-      flyArc(this, img, target.x / s, target.y / s, {
-        delay: i * 70,
-        duration: 600,
-        lift: 80,
-        curve: Phaser.Math.Between(-50, 50),
-        endScale: 22 / 256,
-        onComplete: () => img.destroy(),
-      })
-    }
-  }
-
   startGame() {
     sfx('start_effect')
     this.go(SCENES.Game, { level: player().profile.gameLevel })
@@ -496,7 +472,7 @@ export default class MenuScene extends BaseScene {
       player().removeAds()
       admobService.onAdsRemoved()
       toastService.show(t('ads_removed'), 'success')
-      this.tweens.add({ targets: button, scale: 0, alpha: 0, duration: 300, ease: 'Back.easeIn', onComplete: () => button.destroy() })
+      this.tweens.add({ targets: button, scale: 0, alpha: 0, duration: 300, ease: 'Back.easeIn', onComplete: () => this.scene.restart({ instant: true }) })
     }
     else {
       button.setDisabled(false)

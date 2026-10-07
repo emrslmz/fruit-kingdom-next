@@ -114,6 +114,8 @@ export const usePlayerStore = defineStore('player', {
       const powerUp = state.inventory.powerUps.find(p => p.id === powerUpId)
       return powerUp ? powerUp.quantity : 0
     },
+    levelStars: state => level => state.profile.levelData?.[level]?.stars || 0,
+    totalStars: state => Object.values(state.profile.levelData || {}).reduce((sum, d) => sum + (d?.stars || 0), 0),
     getFruit: state => (fruitId) => {
       return state.inventory.fruitInventory[fruitId] || 0
     },
@@ -398,10 +400,20 @@ export const usePlayerStore = defineStore('player', {
       return false
     },
 
-    completeLevel(level, collectedFruits) {
+    /**
+     * Seviye geçildi (en az 1 yıldız). Geçilen seviye tekrar oynanmaz.
+     * @param {number} level
+     * @param {Record<string, number>} collectedFruits
+     * @param {number} [stars] 1..3
+     */
+    completeLevel(level, collectedFruits, stars = 1) {
       if (level === this.profile.gameLevel) {
         this.profile.gameLevel++
       }
+      if (!this.profile.levelData)
+        this.profile.levelData = {}
+      const prev = this.profile.levelData[level]?.stars || 0
+      this.profile.levelData[level] = { stars: Math.max(prev, stars), at: Date.now() }
       for (const fruitType in collectedFruits) {
         if (Object.hasOwnProperty.call(collectedFruits, fruitType)) {
           const amount = collectedFruits[fruitType]

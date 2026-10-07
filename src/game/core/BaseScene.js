@@ -26,8 +26,8 @@ export default class BaseScene extends Phaser.Scene {
     this.isTransitioning = false
     this.modals = []
     this.currencyBadges = {}
-    // Banner sadece oyun ekranında görünür
-    if (this.scene.key !== SCENES.Game)
+    // Banner sadece oyun ve ana ekranda görünür (bkz. core/banner.js)
+    if (this.scene.key !== SCENES.Game && this.scene.key !== SCENES.Menu)
       admobService.hideBanner()
     this.L = computeLayout(this)
     this.bgLayer = this.add.container(0, 0)

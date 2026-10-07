@@ -7,6 +7,18 @@ import { makeText } from './text'
 
 /** Boot sırasında üretilen efekt dokuları. */
 export function createFxTextures(scene) {
+  if (!scene.textures.exists('fx_vignette')) {
+    // kenarlara doğru koyulaşan beyaz hale (tint ile renklenir, ekrana gerilir)
+    const tex = scene.textures.createCanvas('fx_vignette', 128, 128)
+    const ctx = tex.getContext()
+    const grd = ctx.createRadialGradient(64, 64, 36, 64, 64, 92)
+    grd.addColorStop(0, 'rgba(255,255,255,0)')
+    grd.addColorStop(0.6, 'rgba(255,255,255,0.35)')
+    grd.addColorStop(1, 'rgba(255,255,255,0.85)')
+    ctx.fillStyle = grd
+    ctx.fillRect(0, 0, 128, 128)
+    tex.refresh()
+  }
   const g = scene.make.graphics({ add: false })
   if (!scene.textures.exists('fx_dot')) {
     g.clear().fillStyle(0xFFFFFF).fillCircle(16, 16, 16)

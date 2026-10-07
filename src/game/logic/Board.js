@@ -82,8 +82,37 @@ export default class Board {
     this.columns = generateLevel(level, rng)
     this.tray = []
     this.collected = {}
-    this.status = 'playing' // 'playing' | 'won' | 'lost'
+    this.status = 'playing' // 'playing' | 'won' | 'lost' (sepet doldu) | 'timeout' (süre bitti)
     this.matches = 0
+    const all = this.columns.flat()
+    this.stats = {
+      fruits: all.length,
+      iceHits: all.reduce((sum, f) => sum + f.ice, 0),
+      bushes: all.filter(f => f.bush).length,
+      types: new Set(all.map(f => f.type)).size,
+    }
+  }
+
+  /** Toplanan (eşleşip sıkılan) meyve sayısı. */
+  get collectedCount() {
+    return Object.values(this.collected).reduce((sum, n) => sum + n, 0)
+  }
+
+  /** Toplanan oran, 0..1. */
+  get progress() {
+    return this.stats.fruits ? this.collectedCount / this.stats.fruits : 0
+  }
+
+  /** Süre bitti: oyun durur, yıldızlar o ana kadar toplanana göre hesaplanır. */
+  expire() {
+    if (this.status === 'playing')
+      this.status = 'timeout'
+  }
+
+  /** Ek süre alındı: oyun kaldığı yerden devam eder. */
+  resumeAfterTimeout() {
+    if (this.status === 'timeout')
+      this.status = 'playing'
   }
 
   get boardCount() {

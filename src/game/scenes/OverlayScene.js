@@ -2,7 +2,6 @@ import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import Phaser from 'phaser'
 import { watch } from 'vue'
-import { admobService } from '@/core/services/admobService'
 import { alertService } from '@/core/services/alertService'
 import { toastService } from '@/core/services/ToastService'
 import { SCENES } from '../config'
@@ -50,10 +49,6 @@ export default class OverlayScene extends Phaser.Scene {
         this.alertModal?.close(false)
     })
 
-    // Geliştirmede (web) gerçek reklam yok: akışları test etmek için sahte reklam ekranı
-    if (import.meta.env.DEV)
-      admobService.setWebPresenter(kind => this.showMockAd(kind))
-
     this.input.keyboard?.on('keydown-ESC', () => this.back())
     if (Capacitor.isNativePlatform()) {
       App.addListener('backButton', () => this.back())
@@ -77,7 +72,7 @@ export default class OverlayScene extends Phaser.Scene {
   }
 
   back() {
-    if (this.curtain || this.blocker)
+    if (this.curtain)
       return
     if (this.alertModal && !this.alertModal.closed) {
       alertService.alert.onCancel?.()
@@ -239,74 +234,5 @@ export default class OverlayScene extends Phaser.Scene {
       })
       modal.body.add(cancel)
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Reklam yükleniyor göstergesi
-  // ---------------------------------------------------------------------------
-  showLoading(text) {
-    this.hideLoading()
-    const L = this.L
-    const c = this.add.container(0, 0).setDepth(25)
-    const dim = this.add.rectangle(0, 0, L.dw, L.dh, 0x000000, 0.55).setOrigin(0).setInteractive()
-    const spinner = this.add.graphics()
-    spinner.lineStyle(7, 0xFFFFFF, 0.25).strokeCircle(0, 0, 26)
-    spinner.lineStyle(7, 0xFFD84A, 1).beginPath().arc(0, 0, 26, 0, Math.PI * 0.6).strokePath()
-    spinner.setPosition(L.cx, L.cy - 10)
-    const label = makeText(this, L.cx, L.cy + 44, text, { size: 20, stroke: '#1a0d04', strokeW: 4 })
-    c.add([dim, spinner, label])
-    c.setScale(L.s)
-    this.tweens.add({ targets: spinner, angle: 360, duration: 800, repeat: -1 })
-    c.setAlpha(0)
-    this.tweens.add({ targets: c, alpha: 1, duration: 150 })
-    this.blocker = c
-  }
-
-  hideLoading() {
-    this.blocker?.destroy()
-    this.blocker = null
-  }
-
-  // ---------------------------------------------------------------------------
-  // Sahte reklam (sadece geliştirme / web)
-  // ---------------------------------------------------------------------------
-  showMockAd(kind) {
-    return new Promise((resolve) => {
-      const L = this.L
-      const c = this.add.container(0, 0).setDepth(40).setScale(L.s)
-      const bg = this.add.rectangle(0, 0, L.dw, L.dh, 0x101418, 1).setOrigin(0).setInteractive()
-      const card = this.add.graphics()
-      const w = Math.min(320, L.colW - 40)
-      card.fillStyle(0x1F2A33).fillRoundedRect(L.cx - w / 2, L.cy - 150, w, 260, 22)
-      card.lineStyle(3, 0x36BDF7).strokeRoundedRect(L.cx - w / 2, L.cy - 150, w, 260, 22)
-      const title = makeText(this, L.cx, L.cy - 110, kind === 'rewarded' ? 'TEST · Ödüllü Reklam' : 'TEST · Geçiş Reklamı', { size: 20, stroke: '#0e4a63', strokeW: 4 })
-      const icon = this.add.image(L.cx, L.cy - 30, 'ic_play').setScale(80 / 256)
-      this.tweens.add({ targets: icon, scale: icon.scale * 1.12, duration: 500, yoyo: true, repeat: -1 })
-      const counter = makeText(this, L.cx, L.cy + 60, '', { size: 18, color: '#a7d8f0', stroke: '#0b1a22', strokeW: 3 })
-      c.add([bg, card, title, icon, counter])
-      const total = kind === 'rewarded' ? 3 : 2
-      let left = total
-      let closeBtn = null
-      const finish = (result) => {
-        this.tweens.add({ targets: c, alpha: 0, duration: 150, onComplete: () => c.destroy() })
-        resolve(result)
-      }
-      const tick = () => {
-        counter.setText(left > 0 ? `${left}…` : (kind === 'rewarded' ? '✓' : ''))
-        if (left > 0) {
-          left--
-          this.time.delayedCall(1000, tick)
-          return
-        }
-        closeBtn = new Button(this, L.cx + w / 2 - 20, L.cy - 150 + 20, { w: 40, h: 40, shape: 'round', color: 'grey', glyph: 'x', sound: null, onClick: () => finish(true) })
-        c.add(closeBtn)
-      }
-      if (kind === 'rewarded') {
-        const skip = makeText(this, L.cx, L.cy + 96, 'erken kapat (ödül yok)', { size: 14, color: '#7f97a3', stroke: null, shadow: false })
-        skip.setInteractive({ useHandCursor: true }).on('pointerup', () => !closeBtn && finish(false))
-        c.add(skip)
-      }
-      tick()
-    })
   }
 }

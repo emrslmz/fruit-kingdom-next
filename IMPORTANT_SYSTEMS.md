@@ -9,8 +9,8 @@ ekrana bağlı olduğunun envanteridir. Arayüz tamamen Phaser'a taşındı (bkz
 | Sahne | Dosya | İçerik |
 | --- | --- | --- |
 | Yükleme | `scenes/PreloadScene.js` | logo, rastgele ipucu, ilerleme çubuğu |
-| Ana menü | `scenes/MenuScene.js` | para birimleri, seviye yolu (harita) + maskot, ayarlar, bedava elmas, reklam kaldır, alt çubuk (Envanter, Market, OYNA, Siparişler, Kasalar) |
-| Oyun | `scenes/GameScene.js` | tahta, sepet, hedef çipleri, güçlendirmeler, duraklat, kazan/kaybet/devam pencereleri |
+| Ana menü | `scenes/MenuScene.js` | para birimleri, seviye yolu (harita, kazanılan yıldızlarla) + maskot, ayarlar, toplam yıldız, reklam kaldır, alt çubuk (Envanter, Market, OYNA, Siparişler, Kasalar), banner yuvası |
+| Oyun | `scenes/GameScene.js` | tahta, sepet, süre sayacı, yıldız çubuğu, hedef çipleri, güçlendirmeler, duraklat, süre doldu/sepet doldu teklifi, yıldızlı sonuç pencereleri, banner yuvası |
 | Ayarlar | `scenes/SettingsScene.js` | müzik, ses, titreşim, bildirim, ipucu, dil seçimi, gizlilik politikası |
 | Market | `scenes/ShopScene.js` | güçlendirmeleri elmasla adet seçerek alma |
 | Envanter | `scenes/InventoryScene.js` | meyveler + güçlendirmeler (sekmeli) |
@@ -28,38 +28,26 @@ ekrana bağlı olduğunun envanteridir. Arayüz tamamen Phaser'a taşındı (bkz
   **Not:** `revenue.goldpack_*` ürünleri App Store / Play Console / RevenueCat'te henüz yok.
 - Fiyat metinleri hâlâ `shopStore` içindeki sabit değerler (RevenueCat'ten fiyat çekme yok).
 
-## 2. Reklamlar (AdMob) — `core/services/admobService.js`, oyun tarafı yardımcıları `game/core/ads.js`
+## 2. Reklamlar (AdMob) — sadece banner — `core/services/admobService.js`, yuva `game/core/banner.js`
 
 - **Açılış:** `App.vue` önce bildirim iznini, ardından `admobService.initialize()`'ı çağırır:
-  GDPR/UMP onay formu (gerekiyorsa) → iOS takip izni (ATT) → `AdMob.initialize` →
-  geçiş ve ödüllü reklamlar **önden yüklenir** (istenince anında açılır, gösterilince
-  bir sonraki hemen yüklenir; yükleme başarısız olursa 30 sn sonra tekrar denenir).
+  GDPR/UMP onay formu (gerekiyorsa) → iOS takip izni (ATT) → `AdMob.initialize`.
 - **Reklam ID'leri** (`adIds.js`): production build'de gerçek birimler
   (`ca-app-pub-3304037628561493/...`), `npm run dev`'de ve `VITE_ADMOB_TEST=true` ile
-  alınan build'lerde **Google'ın test birimleri**. Eski dosyada gerçek ID'ler "Test ID"
-  diye yorumlanmıştı; geliştirirken kendi reklamlarını göstermek/tıklamak hesabı
-  kısıtlatabilir.
-- **Banner:** sadece oyun ekranında, native + reklamlar kaldırılmadıysa. Uyarlanabilir
-  banner'ın **gerçek yüksekliği** (`bannerAdSizeChanged`) dinlenir ve oyun alanı tam o
-  kadar yer bırakır; banner yüklenemezse alan geri alınır. Seviyeler arası banner
-  kapanıp açılmaz, menüye dönünce kaldırılır. Geliştirmede (web) altta "AdMob Banner
-  (test)" yer tutucusu çizilir.
-- **Geçiş reklamı:** sadece seviye sonunda (Sonraki Seviye / Tekrar Dene / Ana Sayfa
-  butonlarında): seviye ≥ 4, her 3 seviye sonunda bir, iki reklam arası ≥ 90 sn,
-  açılıştan sonraki ilk 1 dk yok. Kurallar `admobService.js` başındaki sabitlerde.
-  (Eski "her 10 ekran geçişinde bir" kuralı kaldırıldı.)
-- **Ödüllü reklam yerleşimleri** (reklamlar kaldırılmış olsa da isteğe bağlı olarak durur):
-  - Kaybedince: "Reklam İzle, Devam Et" (50 elmasa alternatif, bedava devam)
-  - Kazanınca: "x2 Meyve" — o seviyede toplanan meyveler bir kez daha envantere eklenir
-  - Güçlendirme bitince: satın alma penceresinde "Reklamla Bedava +1"
-  - Ana menü sağ ray + elmas satın alma: "Bedava Elmas" (+10, günde 5 hak)
-  - Enerji satın alma: "Bedava Enerji" (+20)
-  Ödül miktarları `game/core/ads.js → AD_REWARDS`.
-- **Olay adları düzeltildi:** eski kod v7'de var olmayan `rewardedVideoAdRewarded` /
-  `rewardedVideoAdDismissed` olaylarını dinliyordu; telefonda ödül hiç verilmiyordu.
-  Artık `onRewardedVideoAdReward` / `onRewardedVideoAdDismissed` kullanılıyor
-  (`showRewardVideoAd()` sadece ödül kazanılınca resolve olduğu için kapanış olaydan
-  yakalanıyor).
+  alınan build'lerde **Google'ın test birimleri**. Geliştirirken kendi reklamlarını
+  göstermek/tıklamak hesabı kısıtlatabilir.
+- **Banner:** Oyun ekranı ve Ana menüde, native + reklamlar kaldırılmadıysa. Ekranın
+  en altında koyu ahşap bir **yuvada** durur: `setupBannerDock(scene)` yuvayı çizer,
+  banner'ı açar ve yüksekliği döndürür; sahne alt çubuğunu / güçlendirme rafını o
+  yüksekliğin üstüne kurar, yani **hiçbir buton banner'ın altında kalmaz**.
+  Uyarlanabilir banner'ın gerçek yüksekliği (`bannerAdSizeChanged`) gelince sahne
+  tam o ölçüye göre yeniden yerleşir; yüklenemezse yer geri alınır.
+  Banner bir kez yüklenir: Ayarlar/Market vb. ekranlara geçince `BaseScene`
+  gizler (`hideBanner`), Oyun/Menü'ye dönünce yeniden yüklenmeden gösterilir
+  (`resumeBanner`). Geliştirmede (web) yuvada "AdMob Banner (test)" yazar.
+- **Geçiş ve ödüllü reklamlar kaldırıldı** (seviye sonu geçiş reklamı, reklamla devam,
+  x2 meyve, bedava elmas/enerji, reklamla bedava güçlendirme). `adIds.js`'te birim
+  ID'leri ileride gerekirse diye duruyor.
 - **Gizlilik:** GDPR bölgesinde Ayarlar'da "Reklam Gizliliği" satırı çıkar (UMP onay
   formunu yeniden açar).
 - **Native yapılandırma (repoda değil, `android/` ve `ios/` gitignore'da):** Android
@@ -70,7 +58,8 @@ ekrana bağlı olduğunun envanteridir. Arayüz tamamen Phaser'a taşındı (bkz
 ## 3. Reklam Kaldırma
 
 `playerStore.settings.adsRemoved`. Ana menüdeki kırmızı "AD" butonu ve elmas
-satın alma ekranındaki kart. `true` iken banner ve interstitial gösterilmez.
+satın alma ekranındaki kart. `true` iken banner gösterilmez ve yuvası da çizilmez
+(satın alınınca banner kaldırılır, menü yuvasız yeniden kurulur).
 
 ## 4. Ses & Titreşim
 
@@ -108,22 +97,49 @@ pencere açılır.
   parlar (sepet dolmak üzereyse Balyoz, çok çalı varsa Süpürge, buz varsa Rüzgar).
 - İlk kullanımda tanıtım penceresi açılır (`playerStore.profile.seenTips`), uzun
   basınca bilgi balonu çıkar.
-- Adet 0 ise yeşil "+": elmasla satın alma veya reklam izleyip 1 tane bedava
+- Adet 0 ise yeşil "+": elmasla satın alma penceresi
   (`ui/purchase.js → openPowerUpPurchase`, Market'te de aynı pencere).
+- Satın alma / tanıtım penceresi açıkken süre durur.
 
 ## 8. Ana Ekran
 
-Orman yolunda seviye haritası (`MenuScene.buildRoad`): tamamlanan seviyeler yeşil ✓,
-mevcut seviye altın + maskot, sonrakiler kilitli, her 10 seviyede taç. Seviye kazanıp
-menüye dönünce kilit kırılır ve maskot yeni seviyeye zıplar (`registry.levelUpFrom`).
-Sol ray: Ayarlar. Sağ ray: Bedava Elmas (reklam), Reklamları Kaldır. Alt çubuk:
-Envanter, Market, **OYNA**, Siparişler, Kasalar (ücretsiz kasa hazırsa "!").
+Orman yolunda seviye haritası (`MenuScene.buildRoad`): tamamlanan seviyeler yeşil,
+altlarında kazanılan yıldızlar (1–3); mevcut seviye altın + maskot, sonrakiler kilitli,
+her 10 seviyede taç. Geçilen seviyelere dokunulunca sadece zıplar — tekrar oynanmaz.
+Seviye geçip menüye dönünce kilit kırılır ve maskot yeni seviyeye zıplar
+(`registry.levelUpFrom`). Sol ray: Ayarlar + toplam yıldız (`playerStore.totalStars`).
+Sağ ray: Reklamları Kaldır. Alt çubuk: Envanter, Market, **OYNA**, Siparişler, Kasalar
+(ücretsiz kasa hazırsa "!"); altında banner yuvası.
+
+## 9. Süre ve Yıldızlar — `game/logic/timing.js`
+
+- **Süre** = 10 sn + (meyve sayısı + buz vuruşu) × dokunuş başına süre × tür çarpanı,
+  5 sn'ye yuvarlanır. Dokunuş başına süre 1. seviyede 1.6 sn, her seviye 0.011 sn azalır
+  (en az 1.0 sn) — oyun gitgide sıkılaşır; 7'den fazla meyve türü olan seviyelere tür
+  başına %3.5 ek süre. Örnek: 1. seviye 0:55, 5. → 1:20, 10. → 1:50, 20. → 3:05,
+  30. → 4:05, 50. → 5:10.
+- Sayaç seviye şeridi geçince (ya da ilk dokunuşta) başlar; duraklatma ve her açık
+  pencerede durur. Son 20 sn sarı, son 10 sn kırmızı + tik sesi + ekran kenarında
+  kırmızı nabız.
+- **Yıldız** toplanan meyve oranına göre: %40 → 1★, %80 → 2★, tamamı → 3★. Üstteki
+  çubukta üç yıldız bu eşiklerde yanar. **1 yıldız seviyeyi geçirir**; 0 yıldızda
+  "Seviye Başarısız" + Tekrar Dene.
+- **Süre dolunca:** o ana kadarki yıldızlar gösterilir; seviye başına bir kez
+  **+20 sn = 50 elmas** teklifi (8 sn geri sayım) ya da "Bitir".
+  **Sepet dolunca:** aynı pencere, teklif "son 3 meyveyi tahtaya geri koy" (50 elmas,
+  seviye başına bir kez).
+- Yıldızlar `playerStore.completeLevel(level, collected, stars)` ile
+  `profile.levelData[level] = { stars, at }` olarak saklanır (`levelStars`,
+  `totalStars` getter'ları). Seviye geçilince toplanan meyveler (kısmi bitişte de) envantere
+  eklenir.
 
 ## Yeniden tasarımda değişen oyun davranışları
 
 - Sepete giren meyve aynı türün yanına yerleşir (eşleşmeler görsel olarak gruplanır).
 - Sadece çalı/buzlu meyve kaldığında oyun artık "kaybettin" saymıyor (bunlara hâlâ
-  dokunulabiliyor) — kayıp sadece sepet dolunca.
+  dokunulabiliyor).
+- Seviyeler süreli; sonuç yıldızla (bkz. §9). Sepet dolması artık doğrudan kayıp
+  değil: o ana kadar %40 toplandıysa seviye 1 yıldızla geçilir.
 - "Devam et" sepetteki son 3 meyveyi silmek yerine tahtaya geri koyar; böylece
   seviye çözülebilir kalır (silmek 3'lü eşleşme sayısını bozuyordu).
 - Balyoz artık nişan alarak çalışır ve kırdığı 3'lü "toplanan meyveler"e sayılır.

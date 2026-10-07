@@ -2,7 +2,6 @@ import { admobService } from '@/core/services/admobService'
 import { purchaseService } from '@/core/services/PurchaseService'
 import { toastService } from '@/core/services/ToastService'
 import { packageKey, powerUpKey, queueBackground } from '../assets'
-import { AD_REWARDS, canWatchAds, claimFreeDiamonds, claimFreeEnergy } from '../core/ads'
 import { SCENES } from '../config'
 import BaseScene from '../core/BaseScene'
 import { formatNumber, haptic, player, sfx, shop, t } from '../core/services'
@@ -67,18 +66,6 @@ export default class PurchaseScene extends BaseScene {
   buildDiamonds() {
     const p = player()
     const s = shop()
-
-    // ödüllü reklam
-    if (canWatchAds()) {
-      const left = p.adsLeftToday
-      this.addCard({
-        icon: 'ic_diamonds',
-        title: t('watch_ad_free_diamonds'),
-        subtitle: t('watch_ad_free_diamonds_desc', { count: AD_REWARDS.diamonds, left }),
-        button: { label: t('watch'), color: left > 0 ? 'blue' : 'grey', icon: 'ic_play' },
-        onBuy: btn => this.watchAd(btn, claimFreeDiamonds),
-      })
-    }
 
     s.products.specialOffers.forEach((offer) => {
       const pu = offer.content?.powerUps?.[0]
@@ -152,16 +139,6 @@ export default class PurchaseScene extends BaseScene {
   buildEnergy() {
     const s = shop()
     const p = player()
-    if (canWatchAds()) {
-      const full = p.energy.current >= p.energy.max
-      this.addCard({
-        icon: 'ic_energy',
-        title: t('free_energy'),
-        subtitle: t('free_energy_desc', { count: AD_REWARDS.energy }),
-        button: { label: t('watch'), color: full ? 'grey' : 'blue', icon: 'ic_play' },
-        onBuy: btn => this.watchAd(btn, claimFreeEnergy),
-      })
-    }
     this.addHeader(t('exchange_with_gold'))
     s.exchangeOffers.goldToEnergy.forEach((offer) => {
       const full = offer.energy >= p.energy.max
@@ -281,23 +258,6 @@ export default class PurchaseScene extends BaseScene {
     toastService.show(t(result.message), result.success ? 'success' : 'warning')
     if (result.success)
       this.refreshCurrencies()
-  }
-
-  async watchAd(btn, claim) {
-    if (this.busy)
-      return
-    this.busy = true
-    btn.setDisabled(true)
-    const ok = await claim(this)
-    this.busy = false
-    if (!this.sys.isActive())
-      return
-    btn.setDisabled(false)
-    if (ok) {
-      this.celebrate(btn)
-      // kalan hak / dolu enerji durumunu güncellemek için ekranı yeniden kur
-      this.time.delayedCall(700, () => this.scene.restart({ ...this.getState(), instant: true }))
-    }
   }
 
   celebrate(btn) {
