@@ -1,7 +1,7 @@
 import { AdMob, BannerAdPosition, BannerAdSize } from '@capacitor-community/admob'
 import { mobileService } from '@/core/services/MobileService'
 import { getAdIds } from './adIds'
-import { soundService } from '@/core/services/SoundService'
+import { soundService } from '@/core/services/soundService'
 
 let initialized = false
 

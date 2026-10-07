@@ -111,6 +111,13 @@ class SoundService {
     for (const music of musicList) {
       this.music[music.id] = await loadAudio(music)
     }
+
+    // Müzik, dosyalar yüklenmeden istenmişse şimdi başlat
+    if (this.lastPlayedMusicId && !this.currentMusicId) {
+      const playerStore = usePlayerStore()
+      if (playerStore.settings.soundEnabled && playerStore.settings.musicEnabled)
+        this.playMusic(this.pickMusic())
+    }
   }
 
   /**
@@ -318,18 +325,43 @@ class SoundService {
     const playerStore = usePlayerStore()
 
     // Son çalınan müziği hatırla
-    this.lastPlayedMusicId = 'lofi_music'
+    this.lastPlayedMusicId = this.pickMusic()
 
     // Ayarlar açıksa müziği çal
     if (playerStore.settings.soundEnabled && playerStore.settings.musicEnabled) {
       // Biraz daha uzun gecikme ile müziği başlat
       setTimeout(() => {
-        this.playMusic('lofi_music')
+        this.playMusic(this.pickMusic())
       }, 1000)
     }
-    else {
-      // Müzik ayarları kapalı
-    }
+  }
+
+  /**
+   * Yüklenebilmiş ilk müziği seçer (lofi_music .wav dosyası repoda yok,
+   * bulunamazsa calm_music.mp3 çalınır).
+   */
+  pickMusic() {
+    const candidates = ['lofi_music', 'calm_music', 'soft_music']
+    const available = candidates.find(id => this.nativeAudioAssets.has(id) || this.music[id])
+    return available || candidates[0]
+  }
+
+  /** Uygulama arka plana geçince müziği durdurur (kaldığı müziği hatırlar). */
+  pauseMusic() {
+    const id = this.currentMusicId || this.lastPlayedMusicId
+    this.stopMusic()
+    this.lastPlayedMusicId = id
+    if (this.audioContext && this.audioContext.state === 'running')
+      this.audioContext.suspend().catch(() => {})
+  }
+
+  /** Uygulama öne gelince müziği ayarlara göre devam ettirir. */
+  resumeMusic() {
+    const playerStore = usePlayerStore()
+    if (this.audioContext && this.audioContext.state === 'suspended')
+      this.audioContext.resume().catch(() => {})
+    if (playerStore.settings.soundEnabled && playerStore.settings.musicEnabled && this.lastPlayedMusicId && !this.currentMusicId)
+      this.playMusic(this.lastPlayedMusicId)
   }
 
   /**
@@ -344,27 +376,27 @@ class SoundService {
    * ANCAK satın alma işlemi sırasında restart'ı engelle
    */
   setupAppLifecycleListeners() {
-    if (!Capacitor.isNativePlatform()) return
+    if (this.lifecycleListenersSetup)
+      return
+    this.lifecycleListenersSetup = true
 
-    let wasInBackground = false
+    if (!Capacitor.isNativePlatform()) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden)
+          this.pauseMusic()
+        else
+          this.resumeMusic()
+      })
+      return
+    }
 
+    // Arka plana geçince müzik durur, geri gelince kaldığı yerden devam eder.
+    // (Eskiden uygulama tamamen yeniden yükleniyordu; oyun durumu kayboluyordu.)
     App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive && wasInBackground) {
-        // Satın alma işlemi devam ediyorsa restart yapma
-        if (this.isPurchaseInProgress) {
-          wasInBackground = false
-          return
-        }
-        // Arkaplandan geri döndüğünde uygulamayı yeniden başlat
-        window.location.reload()
-      }
-      else if (!isActive) {
-        // Arkaplana geçtiğinde flag'i işaretle
-        wasInBackground = true
-        if (this.isPurchaseInProgress) {
-          console.log('App went to background during purchase - this is expected')
-        }
-      }
+      if (isActive)
+        this.resumeMusic()
+      else
+        this.pauseMusic()
     })
   }
 

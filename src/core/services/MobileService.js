@@ -1,7 +1,5 @@
 import i18n from '@/i18n'
-import { useCoreStore } from '@/store/coreStore'
 import { usePlayerStore } from '@/store/playerStore'
-import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { Network } from '@capacitor/network'
 import { ScreenOrientation } from '@capacitor/screen-orientation'
@@ -9,9 +7,9 @@ import { StatusBar } from '@capacitor/status-bar'
 // YENİ: Capacitor Native Settings import edildi
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings'
 import { ref } from 'vue'
-import { alertService } from './AlertService'
-import notificationService from './NotificationService'
-import { soundService } from '@/core/services/SoundService'
+import { alertService } from './alertService'
+import notificationService from './notificationService'
+import { soundService } from '@/core/services/soundService'
 import { musicList, soundList } from '@/core/services/assets'
 // import { useI18n } from 'vue-i18n'
 
@@ -57,23 +55,9 @@ class MobileService {
         await notificationService.rescheduleAllRecurring()
 
       notificationService.listenToAppState()
-      this.initAppListeners(pinia)
     }
     catch {
     }
-  }
-
-  initAppListeners(pinia) {
-    const coreStore = useCoreStore(pinia)
-    App.addListener('appStateChange', (state) => {
-      if (state.isActive) {
-        soundService.resumeMusic()
-      }
-      else {
-        soundService.pauseMusic()
-        coreStore.goToHome()
-      }
-    })
   }
 
   // GÜNCELLENDİ: Kod, çalışan uygulamadaki versiyona benzetildi ve hata durumu için kullanıcı uyarısı eklendi.

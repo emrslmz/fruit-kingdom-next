@@ -1,123 +1,95 @@
-# Önemli Sistemler (Redesign Öncesi Notlar)
+# Önemli Sistemler
 
-Bu dosya, tasarımı en baştan yapmaya başlarken **kaybetmememiz gereken** iş mantığının bir envanteridir.
-Uygulama şu an sadece 2 ekrana indirildi: **MainMenu** (basit Play ekranı) ve **Game** (oyun alanı).
-Aşağıdaki sistemlerin UI'ları (sayfa/modal) silindi, ama alttaki servis/store kodu duruyor —
-yeni tasarımda bunları yeniden bir arayüze bağlamamız gerekecek.
+Bu dosya, oyunun iş mantığının (satın alma, reklam, ekonomi, bildirim…) hangi
+ekrana bağlı olduğunun envanteridir. Arayüz tamamen Phaser'a taşındı (bkz.
+`CLAUDE.md`); servis/store kodu yerinde duruyor ve sahneler onları çağırıyor.
 
-## Şu an ayakta olan yapı
+## Ekranlar (Phaser sahneleri)
 
-- `MainMenu.vue` (route: `/`) — logo + tek "Play" butonu, `coreStore.goTo('Game')` ile oyuna gider.
-- `Game.vue` (route: `/game`) — oyun alanı: `PhaserGame` (meyve tahtası), `TheGameHeader`
-  (seviye + kalan meyveler), `TheGameFooter` (seçim barı + 3 güçlendirme butonu + banner reklam),
-  `LevelEndModal` (kazandın/kaybettin/devam et), `GameLoading`.
-- Alt yapı (silinmedi, hepsi çalışıyor): `playerStore`, `gameStore`, `shopStore`, tüm
-  `core/services/*`, `AlertModal`/`ToastContainer` (global, `Index.vue` üzerinden).
+| Sahne | Dosya | İçerik |
+| --- | --- | --- |
+| Yükleme | `scenes/PreloadScene.js` | logo, rastgele ipucu, ilerleme çubuğu |
+| Ana menü | `scenes/MenuScene.js` | enerji/altın/elmas, ayarlar, kasalar, reklam kaldır, seviye madalyonu, Oyna, alt menü |
+| Oyun | `scenes/GameScene.js` | tahta, sepet, hedef çipleri, güçlendirmeler, duraklat, kazan/kaybet/devam pencereleri |
+| Ayarlar | `scenes/SettingsScene.js` | müzik, ses, titreşim, bildirim, ipucu, dil seçimi, gizlilik politikası |
+| Market | `scenes/ShopScene.js` | güçlendirmeleri elmasla adet seçerek alma |
+| Envanter | `scenes/InventoryScene.js` | meyveler + güçlendirmeler (sekmeli) |
+| Siparişler | `scenes/OrdersScene.js` | 3 müşteri siparişi, teslim (enerji harcar, altın kazandırır), yenile |
+| Kasalar | `scenes/CasesScene.js` | günlük ücretsiz + altınla açılan kasalar, kayan şeritli açılış |
+| Satın alma | `scenes/PurchaseScene.js` | `currency`: `diamond` / `gold` / `energy` |
+| Overlay | `scenes/OverlayScene.js` | sahne geçiş perdesi, `toastService`, `alertService`, geri tuşu |
 
 ## 1. Satın Alma (RevenueCat / IAP)
 
-- Kütüphane: `@revenuecat/purchases-capacitor`. API key'ler ve ürün ayarları
-  `revenuecat/ios` ve `revenuecat/android` klasörlerinde (keystore, StoreKit config vb.).
-- Ürün kataloğu `src/store/shopStore.js` içinde duruyor (`products.diamondPackages`,
-  `products.specialOffers`, `products.utilities.remove_ads`).
-- Satın alma akışının UI'sı silindi: **PurchaseDiamondModal.vue** (elmas paketleri + starter
-  offer + reklam kaldırma teklifi) ve **PurchaseItemModal.vue** (elmas ile power-up satın alma).
-  RevenueCat `configure`/`getOfferings`/`purchasePackage` çağrıları buradaydı — yeni tasarımda
-  bu akışı yeniden kurman gerekecek (mantık basit: local ürün ↔ `revenueCatId` eşleştir, satın
-  alınca `playerStore.addCurrency('diamonds', ...)` / `playerStore.removeAds()` / `playerStore.addPowerUp(...)`).
-- Web'de (native olmayan platformda) satın alma sahte/mock olarak simüle ediliyordu — bunu da
-  koru, test için gerekli.
+- `PurchaseService.purchase(revenueCatId)` — web'de satın alma simüle edilir (test için).
+- Elmas paketleri + başlangıç teklifi + reklam kaldırma: `PurchaseScene` (`currency: 'diamond'`)
+  → `shopStore.buyDiamondPackage()` / `playerStore.removeAds()`.
+- Altın paketleri: `PurchaseScene` (`currency: 'gold'`) → `shopStore.buyGoldPackage()`.
+  **Not:** `revenue.goldpack_*` ürünleri App Store / Play Console / RevenueCat'te henüz yok.
+- Fiyat metinleri hâlâ `shopStore` içindeki sabit değerler (RevenueCat'ten fiyat çekme yok).
 
-## 2. Reklamlar (AdMob)
+## 2. Reklamlar (AdMob) — `admobService.js`, ID'ler `adIds.js` (şu an test ID'leri)
 
-- Servis: `src/core/services/admobService.js` (banner / interstitial / rewarded), reklam
-  birimi ID'leri `src/core/services/adIds.js` içinde — **şu an test ID'leri**, yayına almadan
-  önce gerçek AdMob ID'leriyle değiştirilmeli.
-- **Banner** — `TheGameFooter.vue` içinde hâlâ aktif, oyun ekranında gösteriliyor
-  (`playerStore.settings.adsRemoved` false ise).
-- **Interstitial** — eski akışta, MainMenu'deki Orders/Home/Settings slaytları arası geçişte
-  her 10 navigasyonda bir gösteriliyordu (`playerStore.handleNavigation()` sayaçı). O ekranlar
-  silindiği için bu tetikleyici şu an devre dışı; yeni tasarımda nereye bağlanacağına karar
-  vermek gerekiyor.
-- **Rewarded (ödüllü reklam)** — "reklam izle, elmas kazan" butonu Home.vue'daydı, silindi.
-  `admobService.showRewardedAd()` hâlâ çalışır durumda, sadece çağıran UI yok.
+- **Banner:** oyun ekranında, sadece native + reklamlar kaldırılmadıysa. Ekranın altında
+  banner için yer ayrılır (`GameScene.computeGameLayout → bannerH`), oyun alanıyla çakışmaz.
+- **Interstitial:** her 10 ekran geçişinde bir (`BaseScene.go` → `playerStore.handleNavigation()`),
+  sadece native.
+- **Ödüllü reklam:** Elmas satın alma ekranında "Bedava Elmas" kartı — reklam başına
+  **10 elmas**, günlük limit `playerStore.ads.dailyAdLimit` (5). Miktar
+  `PurchaseScene.js → REWARDED_AD_DIAMONDS`.
 
-## 3. Reklam Kaldırma (Remove Ads)
+## 3. Reklam Kaldırma
 
-- `playerStore.settings.adsRemoved` bayrağı satın alma sistemiyle birlikte çalışıyor.
-  `true` olduğunda banner reklam gösterilmiyor (`TheGameFooter.vue`) ve interstitial akışı
-  atlanıyor (`playerStore.handleNavigation()`).
-- Satın alma UI'sı (**RemoveAdsModal.vue**) silindi — yeni tasarımda tek bir "reklamları
-  kaldır" kartı/butonu yeterli, mantığı `playerStore.removeAds()` + RevenueCat `remove_ads`
-  ürünü.
+`playerStore.settings.adsRemoved`. Ana menüdeki kırmızı "AD" butonu ve elmas
+satın alma ekranındaki kart. `true` iken banner ve interstitial gösterilmez.
 
 ## 4. Ses & Titreşim
 
-- `src/core/services/SoundService.js`, `VibrationService.js` — tamamen aktif, oyun içinde
-  müzik/efekt/titreşim çalışıyor.
-- Açma/kapama ayarları `playerStore.settings.soundEnabled / musicEnabled / vibration` içinde
-  duruyor ama bunları değiştirecek bir ekran yok artık (**Settings.vue** silindi). Yeni
-  tasarımda basit bir ayarlar ekranı/modalı gerekecek.
+- `soundService` / `VibrationService`. Ayarlar ekranından ve oyundaki duraklatma
+  menüsünden açılıp kapatılır.
+- Uygulama arka plana geçince müzik durur, öne gelince devam eder
+  (`soundService.pauseMusic/resumeMusic`). **Eskiden uygulama öne gelince tamamen
+  yeniden yükleniyordu; bu kaldırıldı.** Oyun sırasında arka plana geçilirse oyun
+  duraklatma menüsünü açar (önceden ana menüye atıyordu).
 
 ## 5. Bildirimler (Local Notifications)
 
-- `src/core/services/notificationService.js` — hareketsizlik hatırlatmaları (3s/24s/3g/1h),
-  "geri dön" bildirimi, ve (artık kullanılmayan) sipariş hazır bildirimleri.
-- İlk açılışta izin isteme `App.vue` üzerinden hâlâ çalışıyor. Açma/kapama anahtarı
-  **Settings.vue**'daydı, silindi.
+`notificationService.js` — ilk açılışta izin isteme `App.vue`'de. Ayarlar'daki
+anahtar native'de izni ister; reddedilirse cihaz ayarlarına yönlendiren bir
+pencere açılır.
 
 ## 6. Ekonomi / Para Birimleri
 
-- İki para birimi var: `diamonds` (premium/IAP) ve `gold` (siparişlerden kazanılan —
-  bu session'da eklendi). Mantık `playerStore.js` içinde duruyor.
-- Bu para birimlerini harcayacak/kazandıracak tüm ekranlar (Market, Orders, Envanter) silindi.
-  Yani şu an oyuncu meyve topluyor (`playerStore.completeLevel` her seviye sonunda
-  `inventory.fruitInventory`'e yazıyor) ama bunu harcayacağı bir yer yok — bu, yeni tasarımın
-  ana işi olacak.
-- `playerStore.characters` (sipariş müşterileri) ve `playerStore.orders` veri modeli de duruyor,
-  şu an kullanılmıyor.
+- `diamonds` (premium), `gold` (siparişlerden), `energy` (sipariş teslimi 10 harcar).
+- Seviye bitince toplanan meyveler `playerStore.completeLevel()` ile envantere yazılır →
+  siparişlerde altına çevrilir → altın kasa açmaya ve enerji almaya harcanır.
+- Takas oranları `shopStore.exchangeOffers` içinde.
 
-## 7. Güçlendirmeler (Power-ups)
+## 7. Güçlendirmeler
 
-- 3 güçlendirme oyunda hâlâ tam çalışıyor: **Balyoz** (eski dynamite), **Süpürge** (eski brush),
-  **Rüzgar** (eski tornado) — `TheGameFooter.vue` / `PowerUp.vue` / `gameStore.js`.
-- Elmasla satın alma ekranı (**ShopModal.vue**) silindi — fiyatlar hâlâ `shopStore.powerUps`
-  içinde duruyor, yeni market tasarımında buraya bağlanacak.
+- Balyoz (`dynamite`), Süpürge (`brush`), Rüzgar (`tornado`) — oyun ekranının altında.
+- Adet 0 ise butonda yeşil "+" görünür; dokununca elmasla satın alma penceresi açılır
+  (`ui/purchase.js → openPowerUpPurchase`). Aynı pencere Market'te de kullanılıyor.
+- Hedef yoksa (tahtada çalı/buz yoksa, 3'lü yoksa) güçlendirme **harcanmaz**, uyarı gösterilir.
 
-## 8. Kaldırılan / Hiç Bağlanmamış Diğer Sistemler
+## Yeniden tasarımda değişen oyun davranışları
 
-- **Seviye Haritası** (`Map.vue`) — yıldız/kilit/ödül mekanikli bir "level path" ekranı
-  vardı ama zaten navigasyona bağlı değildi (kod'da yorum satırıydı). Tamamen silindi.
-- **Tutorial overlay** (`TutorialService.js`, `TutorialOverlay.vue`) — hiçbir yerden
-  çağrılmıyordu, tamamen ölü kod olduğu için silindi.
-- **Dil seçici** (`LanguageModal.vue`) — Home.vue'daydı, silindi. `languageService.js` ve
-  13 dilin çevirileri (`src/i18n/locales/*.ts`) duruyor, sadece seçim ekranı yok.
+- Sepete giren meyve aynı türün yanına yerleşir (eşleşmeler görsel olarak gruplanır).
+- Sadece çalı/buzlu meyve kaldığında oyun artık "kaybettin" saymıyor (bunlara hâlâ
+  dokunulabiliyor) — kayıp sadece sepet dolunca.
+- "Devam et" sepetteki son 3 meyveyi silmek yerine tahtaya geri koyar; böylece
+  seviye çözülebilir kalır (silmek 3'lü eşleşme sayısını bozuyordu).
+- Balyozla kırılan 3 meyve de "toplanan meyveler"e sayılır.
+- 7 saniye hamle yapılmazsa bir sonraki iyi hamle hafifçe sallanır (ayarlardan
+  "İpuçları" kapatılabilir).
 
-## Silinen dosyalar (referans için)
+## Kaldırılan dosyalar
 
-```
-src/modules/app/views/Home.vue
-src/modules/app/views/Orders.vue
-src/modules/app/views/Map.vue
-src/modules/app/views/Settings.vue
-src/components/TheFooter.vue
-src/components/TheHeader.vue
-src/components/Balance.vue
-src/components/ShopModal.vue
-src/components/PurchaseItemModal.vue
-src/components/PurchaseDiamondModal.vue
-src/components/RemoveAdsModal.vue
-src/components/LanguageModal.vue
-src/components/OrderDetail.vue
-src/components/CharacterSprite.vue
-src/components/GameSettingsModal.vue   (zaten kullanılmıyordu)
-src/modules/app/components/DebugPanel.vue      (zaten kullanılmıyordu)
-src/modules/app/components/OldGameLoading.vue  (zaten kullanılmıyordu)
-src/components/FruitPhysicsAnimation.vue       (zaten kullanılmıyordu)
-src/components/TutorialOverlay.vue
-src/core/services/TutorialService.js
-src/components/ClashButton.vue
-```
+Eski Vue/Ionic arayüzü (`src/modules`, `src/components`, `src/router`,
+`src/composables`, `coreStore`, `gameStore`, `PowerUpService`, `effectService`,
+`core/config`, `core/theme`, `index.css`) silindi; hepsinin karşılığı `src/game`
+altında. Git geçmişinden geri çağrılabilir.
 
-Bu commit'lenmediği sürece `git diff` / `git log` ile eski halleri her zaman geri
-çağrılabilir — hiçbir şey kalıcı olarak kaybolmadı, sadece aktif uygulamadan çıkarıldı.
+Kullanılmayan ama bırakılanlar: `src/assets/vendor` (FontAwesome, artık import
+edilmiyor), `package.json`'daki Ionic/Tailwind/Swiper/three gibi bağımlılıklar ve
+Tailwind/PostCSS yapılandırması — istenirse ayrı bir temizlikte kaldırılabilir.

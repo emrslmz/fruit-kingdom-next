@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import { defineStore } from 'pinia'
-import { useGameStore } from './gameStore'
+import { FRUIT_TYPES } from '@/game/logic/fruits'
 
 class PlayerStorage {
   constructor() {
@@ -154,8 +154,7 @@ export const usePlayerStore = defineStore('player', {
     },
 
     generateOrders() {
-      const gameStore = useGameStore()
-      const availableFruits = gameStore.fruitTypes.filter(f => f.id !== 'rainbow')
+      const availableFruits = FRUIT_TYPES
       if (availableFruits.length === 0) return
 
       let ordersStateChanged = false
@@ -288,8 +287,7 @@ export const usePlayerStore = defineStore('player', {
     },
 
     addTestOrder() {
-      const gameStore = useGameStore()
-      const availableFruits = gameStore.fruitTypes.filter(f => f.id !== 'rainbow')
+      const availableFruits = FRUIT_TYPES
       if (availableFruits.length === 0) {
         return { success: false, message: 'Meyve verisi yok.' }
       }
@@ -330,11 +328,8 @@ export const usePlayerStore = defineStore('player', {
     },
 
     addTestFruits() {
-      const gameStore = useGameStore()
-      gameStore.fruitTypes.forEach((fruit) => {
-        if (fruit.id !== 'rainbow') {
-          this.inventory.fruitInventory[fruit.id] = (this.inventory.fruitInventory[fruit.id] || 0) + 10
-        }
+      FRUIT_TYPES.forEach((fruit) => {
+        this.inventory.fruitInventory[fruit.id] = (this.inventory.fruitInventory[fruit.id] || 0) + 10
       })
       this.saveToStorage()
       return { success: true, message: 'Test meyveleri eklendi.' }

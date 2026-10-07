@@ -39,6 +39,13 @@ export default ({ mode }) => {
         transformMixedEsModules: true,
       },
       assetsInlineLimit: 0,
+      chunkSizeWarningLimit: 1600,
+      rollupOptions: {
+        output: {
+          // Phaser ayrı dosyada: uygulama kodu değiştiğinde motor önbellekten gelir
+          manualChunks: { phaser: ['phaser'] },
+        },
+      },
     },
     define: {
       'process.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL),

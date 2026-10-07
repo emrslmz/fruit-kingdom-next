@@ -1,4 +1,4 @@
-import { soundService } from '@/core/services/SoundService.js'
+import { soundService } from '@/core/services/soundService.js'
 import { ref } from 'vue'
 
 class ToastService {

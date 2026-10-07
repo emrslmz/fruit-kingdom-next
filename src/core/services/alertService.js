@@ -71,7 +71,7 @@ class AlertService {
   isPurchaseInProgress() {
     // soundService'den satın alma durumunu kontrol et
     try {
-      const { soundService } = require('@/core/services/SoundService')
+      const { soundService } = require('@/core/services/soundService')
       return soundService.isPurchaseInProgress
     }
     catch {

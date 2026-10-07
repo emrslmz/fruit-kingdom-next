@@ -1,95 +1,91 @@
 # Fruit Kingdom — Proje Kuralları
 
-## UI Bileşenleri: Kenney UI Pack kullan
+## Mimari: Tüm arayüz Phaser'da
 
-Buton, işaretleme kutusu (checkbox), kaydırıcı (slider), ok/ikon rozeti gibi **oyun
-tarzı UI elemanları** için elle CSS gradient/border ile "oyun ikonu" taklit etmek
-yerine `public/assets/Vector` altındaki hazır Kenney "UI Pack (2.0)"
-assetlerini kullan. CC0 lisanslı (bkz. `kenney_ui-pack/License.txt`), tamamen özgür
-kullanım — kredi vermek zorunlu değil.
+Oyunun **bütün ekranları** (yükleme, ana menü, oyun, ayarlar, market, envanter,
+siparişler, kasalar, satın alma) `src/game/` altındaki Phaser sahneleridir.
+Vue artık sadece ince bir kabuk: `src/App.vue` tam ekran bir `<div>` açar ve
+`createGame()` ile Phaser'ı başlatır; Pinia store'ları, i18n ve Capacitor
+servisleri (`src/core/services/*`) eskisi gibi Vue tarafında yaşar.
 
-**Yol yapısı:** `PNG/<Renk>/<Varyant>/<dosya>.png`
+```
+src/game/
+  index.js            createGame(): DPR'li tam ekran canvas + resize takibi
+  config.js           renk paleti (Kenney), font, tasarım ölçüleri, sahne adları
+  assets.js           doku anahtarı → dosya yolu, tembel arka plan yükleme
+  core/layout.js      ekran → "tasarım birimi" dönüşümü, safe-area
+  core/BaseScene.js   tüm ekranların tabanı (arka plan, üst çubuk, geçiş, geri tuşu)
+  core/services.js    store/servis köprüsü: player(), shop(), t(), sfx(), haptic()
+  logic/Board.js      oyun kuralları — saf model, Phaser'dan bağımsız
+  logic/fruits.js     meyve türleri
+  ui/                 Button, Modal, CurrencyBadge, Toggle, ScrollView, text, effects
+  scenes/             Boot, Preload, Menu, Game, Settings, Shop, Inventory,
+                      Orders, Cases, Purchase, Overlay (toast/alert/geçiş — hep en üstte)
+```
 
-- Renk: `Blue`, `Green`, `Grey`, `Red`, `Yellow`
-- Varyant: `Default` (ince tek kontür) veya `Double` (kalın çift kontür). **Aksi
-  belirtilmedikçe `Double` kullan** — daha oyuncul/kalın kontür hissi veriyor.
+## Responsive: tasarım birimi ile yaz, piksel değil
 
-**Renk ↔ anlam eşlemesi (tutarlılık için, `ButtonBig.vue`'daki eşlemeyle aynı):**
+- Canvas, CSS boyutu × `devicePixelRatio` (en fazla 3) çözünürlükte çizilir —
+  retina ekranlarda metin ve vektörler keskin kalır.
+- Her sahne UI'ını `this.root` container'ına **tasarım biriminde** kurar. Referans
+  ekran 390×780 bir telefondur; `computeLayout()` her cihaz için ölçeği (`L.s`)
+  hesaplar. Bir butona `w: 160` demek her cihazda aynı oranda görünmek demektir.
+- Kullanılacak ölçüler `this.L` içinde: `dw/dh` (ekran), `cx/cy` (orta), `top/bottom`
+  (çentik/home bar hariç güvenli alan), `colX/colW` (içerik sütunu — tablet ve
+  masaüstünde en fazla 560 birim, ortalanır).
+- `window.innerWidth`, sabit piksel, `sm:`/`md:` gibi breakpoint mantığı **yok**.
+  Ekran boyutu değişince (döndürme, pencere) sahne `getState()` ile aynı durumla
+  yeniden kurulur — durum korunması gereken sahneler `getState()`'i override eder
+  (bkz. `GameScene`: tahta modeli aynen korunur).
+- Uzun çeviriler için metni `fitText(text, maxW, maxH)` ile sığdır; kutuya
+  göre büyütme/küçültme yapma.
 
-- `Yellow` → birincil aksiyon / vurgulanan buton (Play, Buy, Complete)
-- `Green` → onay / başarı (`success` varyantı — Confirm, Next Level, Claim)
-- `Red` → tehlike / iptal (`danger` varyantı — Cancel, Retry, Remove)
-- `Blue` → ikincil / bilgi (`primary` varyantı)
-- `Grey` → pasif / nötr (`secondary`/`gray` varyantı — Home, Close)
-- Pack'te **karşılığı olmayan** bir renk gerekiyorsa (örn. mor/violet), eski
-  CSS-gradient yöntemine düş — `ButtonBig.vue`'daki `FALLBACK_COLORS` deseni gibi.
+## UI kiti: Kenney renk ↔ anlam eşlemesi
 
-**Nasıl uygulanır:** Bu pack'te 9-slice/XML dilim verisi yok, düz PNG'ler (dikdörtgen
-buton 192×64 ≈ 3:1 oranında, yuvarlak/kare 64×64 ≈ 1:1). Bir elemanın boyutu asset'in
-oranına yakın tutulduğu sürece `background-image` + `background-size: 100% 100%` ile
-germek yeterli, köşe bozulması fark edilmiyor. Şekil/kontür/derinlik zaten görselin
-içinde — üstüne **ayrıca** `border`, `border-radius`, `box-shadow`, `bg-gradient-to-*`
-gibi class'lar ekleme, bunlar asset'i gizler ya da köşeleri çift katlı bozar. Basılma
-efekti için `transform: translateY(4px)` + `filter: drop-shadow(...)` yeterli (bkz.
-`ButtonBig.vue` → `.big-button--asset`, `TheMenuFooter.vue` → `.footer-item`).
+Butonlar `ui/Button.js` ile prosedürel çizilir (Kenney UI Pack 2.0'ın birebir
+renkleriyle, her boyutta keskin, basılma animasyonlu). Renk anlamı değişmedi:
 
-**Kapsam / henüz yapılmadı:** `ButtonBig.vue` ve `MainMenu.vue`'daki alt menü
-butonları bu kurala uyacak şekilde güncellendi. Pack'te panel/pencere çerçevesi
-(modal arka planı) **yok** — modal gövdesi (`AlertModal.vue`, `LevelEndModal.vue`)
-kendi tasarımında kalıyor, sadece içindeki `ButtonBig` butonları bu kurala uyuyor.
-Diğer buton/toggle/slider kullanımlarını da (varsa) aynı kurala göre güncelle.
+- `yellow` → birincil aksiyon / vurgulanan buton (Play, Buy, Restart)
+- `green` → onay / başarı (Confirm, Next Level, Claim, Deliver)
+- `red` → tehlike / iptal (Cancel, Home (pause), No Thanks)
+- `blue` → ikincil / bilgi (ayarlar, bilgi, yenile)
+- `grey` → pasif / nötr (Home, kapalı durum)
+- Pack'te olmayanlar `config.js → BTN` içinde: `purple` (devam et), `wood` (pasif sekme).
 
-**İstisna — HUD göstergeleri (seviye/para birimi rozeti gibi):** Bu pack'te ahşap/
-kahverengi tonu yok (sadece Blue/Green/Grey/Red/Yellow). `LevelBadge.vue` ve
-`CurrencyBadge.vue` gibi salt bilgi gösteren (aksiyon almayan) rozetler, oyunun
-ahşap/parşömen temasıyla tutarlı kalmak için bilinçli olarak kendi CSS'inde
-kaldı — Kenney'e zorlamıyoruz. Bu ikisinde de "ikon dairesi, pilin sol kenarından
-biraz taşıyor" deseni var (`absolute -left-N` + pilin yüksekliğinden büyük ikon
-kutusu); yeni bir HUD rozeti eklerken bu deseni tekrar kullan.
+Diğer yapı taşları: `Modal` (parşömen panel + kurdele başlık, `modal.body`'ye
+içerik eklenir), `CurrencyBadge` (sayı animasyonlu), `Toggle`, `ScrollView`
+(içindeki butonları `sv.register(btn)` ile kaydet — maskenin dışından
+tıklanmasınlar), `makeText`/`inkText` (kontürlü oyun metni / parşömen üstü metin),
+`effects.js` (patlama, uçan yazı, konfeti, ışık huzmesi, yay çizerek uçma).
+Yeni ekranda bunları kullan; aynı görünümü elle yeniden çizme.
 
-## Styling: Oyun alanı dışında Tailwind kullan
+## Yeni sahne eklemek
 
-Oyun tahtası/canvas'ı **dışındaki** UI (menüler, modallar, HUD, footer/header)
-için boyutlandırma (ikon `width`/`height`, `gap`, `padding`, `aspect-ratio` vb.)
-Tailwind utility class'larıyla template içinde yapılır — `<style scoped>`
-bloğunda sabit piksel/rem değeri **tanımlanmaz**. `<style scoped>` sadece
-Tailwind'in ifade edemediği şeyler için kalır: Kenney `background-image` asset
-atamaları, çok yönlü `text-shadow` (kontür efekti), `@keyframes` animasyonları.
-Örnek: `MainMenu.vue`'daki `.footer-item` — boyut/aralık Tailwind (`aspect-square`,
-`gap-1`, `p-2`), görsel efekt (background-image, filter, text-shadow) scoped CSS.
+1. `scenes/XScene.js`: `BaseScene`'den türet, `build(data)` yaz.
+2. `config.js → SCENES`'e adını, `index.js`'teki sahne listesine sınıfı ekle
+   (`OverlayScene` listenin **sonunda** kalmalı).
+3. Büyük arka planı `preload()` içinde `queueBackground(this, 'bg_...')` ile yükle.
+4. Gezinme her zaman `this.go(SCENES.X, data)` ile (perde geçişi + geçiş reklamı
+   sayacı); geri davranışı için `onBack()`'i override et.
 
-**İkon ölçekleme: `scale-[N]` kullan.** Bir `<img>` ikonu bir Kenney buton/rozet
-içinde görsel olarak büyük durması gerekiyorsa, `width`/`height` class'ını
-büyütme — `w-8 h-8` gibi küçük bir taban boyutu bırak, görsel büyütmeyi
-`scale-[2.5]` gibi bir `transform` class'ı ile yap (bkz. `TheMenuFooter.vue` →
-`.footer-item img`). Bu, ikonun kutu içindeki hizalamasını/oranını bozmadan
-büyütmeyi sağlıyor; genel kural budur, `clamp()`/`vw` tabanlı boyutlandırmaya
-gidilmez.
+## Oyun kuralları
 
-**Responsive breakpoint'ler: telefon öncelikli (`phone-lg`/`phone-xl`).** Bu
-oyun öncelikle telefon ekranı içindir ve gerçek telefon genişlikleri ~360-430px
-arasında kalır — Tailwind'in varsayılan `sm` (640px) ve üzeri breakpoint'leri
-**hiçbir telefonda tetiklenmez**, sadece tablet/masaüstü tarayıcı penceresinde
-görünür olur (bir eleman "büyük ekranlarda orantılı büyüsün" denilip sadece
-`sm:`/`md:` eklenirse, telefonda hiçbir şey değişmemiş gibi görünür — bunu
-canlıda yaşadık). Hedef telefon ise (ki genelde öyledir), `tailwind.config.js`
-→ `theme.extend.screens`'e eklenmiş şu özel breakpoint'leri kullan:
+Kurallar `logic/Board.js` modelinde: 4 sütun, görünen her meyveye dokunulabilir,
+7 slotluk sepet, aynı türden 3 meyve eşleşir; çalı (dokununca açılır ve meyve
+alınır), buz (her dokunuş bir kademe kırar); Balyoz/Süpürge/Rüzgar güçlendirmeleri;
+50 elmasla devam (sepetteki son 3 meyve tahtaya döner). `GameScene` sadece modelin
+sonuçlarını canlandırır — kural değişikliğini modelde yap.
 
-- `phone-lg: 393px` — standart büyük telefonlar (iPhone 14/15/16, Pixel vb.)
-- `phone-xl: 428px` — en büyük telefonlar (iPhone Pro Max/Plus, Galaxy Ultra vb.)
+## Geliştirme / test
 
-Varsayılan `sm`/`md`/`lg`/`xl` (640/768/1024/1280px) olduğu gibi duruyor —
-gerçek tablet/masaüstü önizleme senaryoları için ek bir bonus kademe olarak
-kullanılabilir, ama telefonlar arası ölçeklemeyi bunlara **bağlama**. Örnek
-zincir: `w-10 h-10 phone-lg:w-11 phone-lg:h-11 phone-xl:w-12 phone-xl:h-12
-md:w-14 md:h-14 lg:w-16 lg:h-16` (bkz. `TheMenuHeader.vue`, `TheMenuFooter.vue`,
-`CurrencyBadge.vue`, `LevelBadge.vue`).
-
-**Kapsam / henüz yapılmadı:** Bu desen şimdilik sadece `TheMenuHeader.vue`,
-`TheMenuFooter.vue`, `CurrencyBadge.vue` ve `LevelBadge.vue`'de uygulandı.
-`TheGameHeader.vue`, `TheGameFooter.vue`, `SelectionBar.vue` gibi daha eski
-dosyalarda hâlâ telefonda hiç tetiklenmeyen `sm:`/`md:` kullanımı var —
-onlara dokunurken aynı `phone-lg:`/`phone-xl:` desenine geçir.
+- `npm run dev` → `http://localhost:5757`. Geliştirme modunda `?scene=Game` gibi bir
+  parametre ile doğrudan bir sahneden başlanabilir, `window.__FK_GAME__` Phaser
+  oyun nesnesidir (konsoldan sahnelere erişim için).
+- Ses efektlerinin çoğu `.wav` ve `.gitignore`'da; repoda yoksa `soundService`
+  sessizce geçer, müzik `calm_music.mp3`'e düşer.
+- Import yollarında dosya adının büyük/küçük harfine dikkat
+  (`soundService.js`, `notificationService.js`, `alertService.js`) — macOS
+  tolere eder ama Linux/CI build'i kırılır.
 
 ## i18n / Çeviriler
 
@@ -97,13 +93,13 @@ Yeni metin eklerken veya mevcut key'lerin **değerini** değiştirirken sadece
 **`src/i18n/locales/tr.ts`** ve **`src/i18n/locales/en.ts`**'i düzenle. Diğer 11
 dili (`ar`, `de`, `es`, `hi`, `it`, `ja`, `ko`, `pt`, `ru`, `uk`, `zh`) elleme —
 onları proje sahibi kendisi çevirip güncelliyor. Yeni bir key eklediğinde diğer
-dillerde o key eksik kalır; bu kabul edilebilir (uygulama o key için tr/en
-metnini fallback olarak kullanır ya da proje sahibi sonradan çevirir).
+dillerde o key eksik kalır; bu kabul edilebilir (uygulama o key için en metnini
+fallback olarak kullanır ya da proje sahibi sonradan çevirir). Phaser tarafında
+çeviri `core/services.js → t()` ile alınır.
 
 ## State / Store Katmanı
 
-Market, Sipariş, Harita, Ayarlar gibi bazı ekranlar aktif tasarım çalışması
-sırasında **silindi** ama altlarındaki `playerStore`/`shopStore` verisi (para
-birimleri, envanter, sipariş/karakter modeli, powerup fiyatları) **bilerek
-duruyor** — yeni tasarımlar buraya bağlanacak. Ayrıntı ve hangi dosyanın nereye
-gittiği için bkz. `IMPORTANT_SYSTEMS.md`.
+`playerStore` (profil, para birimleri, envanter, siparişler, ayarlar) ve
+`shopStore` (ürün kataloğu, kasa/takas mantığı) Pinia'da duruyor ve tüm sahneler
+bunları `player()` / `shop()` ile kullanıyor. Hangi sistemin hangi ekrana bağlı
+olduğu için bkz. `IMPORTANT_SYSTEMS.md`.
