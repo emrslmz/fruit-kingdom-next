@@ -1,117 +1,55 @@
 import { App } from '@capacitor/app'
 import Phaser from 'phaser'
+import { admobService } from '@/core/services/admobService'
 import { mobileService } from '@/core/services/MobileService'
 import { purchaseService } from '@/core/services/PurchaseService'
 import { toastService } from '@/core/services/ToastService'
 import { queueBackground } from '../assets'
-import { COLORS, SCENES } from '../config'
+import { BTN, SCENES } from '../config'
+import { AD_REWARDS, canWatchAds, claimFreeDiamonds } from '../core/ads'
 import BaseScene from '../core/BaseScene'
 import { player, sfx, t } from '../core/services'
-import { FRUIT_IDS } from '../logic/fruits'
 import Button from '../ui/Button'
 import CurrencyBadge from '../ui/CurrencyBadge'
-import { drawPlank, drawVerticalFade, fillStar } from '../ui/draw'
-import { bob, breathe, sunburst } from '../ui/effects'
+import { drawPill, drawVerticalFade, fillStar } from '../ui/draw'
+import { breathe, burst, flyArc, shake, sunburst } from '../ui/effects'
 import { fitText, makeText } from '../ui/text'
 
-/** Ana menü: para birimleri, seviye madalyonu, maskot, Oyna butonu, alt menü. */
+const ROAD_BEHIND = 2 // mevcut seviyenin altında gösterilen tamamlanmış seviye sayısı
+const ROAD_AHEAD = 5 // üstünde gösterilen kilitli seviye sayısı
+
+/**
+ * Ana ekran: orman yolunda ilerleyen seviye haritası.
+ * Tamamlanan seviyeler yeşil, mevcut seviye altın ve maskotlu, sonrakiler kilitli.
+ * Bir seviye kazanılıp menüye dönülünce maskot yeni seviyeye zıplar.
+ */
 export default class MenuScene extends BaseScene {
   constructor() {
     super(SCENES.Menu)
   }
 
   preload() {
-    queueBackground(this, 'bg_home')
+    queueBackground(this, 'bg_level')
   }
 
   build() {
-    const L = this.L
     const p = player()
-    this.addBackground('bg_home', { topShade: 0.45, bottomShade: 0.55, drift: true })
-    this.addAmbientFruits()
+    this.addBackground('bg_level', { topShade: 0.4, bottomShade: 0.5 })
+    this.addFallingLeaves()
 
-    // --- Üst çubuk: enerji | altın + elmas -----------------------------------
     const headerBottom = this.buildHeader()
+    const navTop = this.buildBottomBar()
+    this.buildRails(headerBottom)
 
-    // --- İkinci satır: ayarlar | kasalar + reklam kaldır ---------------------
-    const rowY = headerBottom + 36
-    const left = L.colX + 14
-    const right = L.colX + L.colW - 14
-    const settings = new Button(this, left + 26, rowY, {
-      w: 52,
-      h: 52,
-      color: 'blue',
-      icon: 'ic_cog',
-      iconSize: 34,
-      onClick: () => this.go(SCENES.Settings),
-    })
-    const cases = new Button(this, right - 26, rowY, {
-      w: 52,
-      h: 52,
-      color: 'yellow',
-      icon: 'case_gear',
-      iconSize: 40,
-      onClick: () => this.go(SCENES.Cases),
-    })
-    if (p.canOpenFreeCase())
-      cases.setBadge('!', { color: 0xEE2747 })
-    this.root.add([settings, cases])
-    const topButtons = [settings, cases]
-    if (!p.settings.adsRemoved) {
-      const ads = new Button(this, right - 26 - 62, rowY, {
-        w: 52,
-        h: 52,
-        color: 'red',
-        icon: 'ic_remove_ads',
-        iconSize: 38,
-        onClick: () => this.removeAds(ads),
-      })
-      this.root.add(ads)
-      topButtons.push(ads)
-    }
-    this.popIn(topButtons, { delay: 150 })
-
-    // --- Alt menü -------------------------------------------------------------
-    const navTop = this.buildBottomNav()
-
-    // --- Orta: seviye madalyonu + maskot + Oyna ------------------------------
-    const areaTop = rowY + 34
-    const areaBottom = navTop - 10
-    const areaH = areaBottom - areaTop
-    const playY = areaBottom - Math.min(70, areaH * 0.16)
-    const medalY = areaTop + (playY - 60 - areaTop) * 0.5
-    const medalR = Phaser.Math.Clamp(Math.min(areaH * 0.2, L.colW * 0.24), 56, 96)
-    this.buildMedal(L.cx, medalY, medalR, p.profile.gameLevel)
-
-    const play = new Button(this, L.cx, playY, {
-      w: Math.min(260, L.colW - 80),
-      h: 76,
-      color: 'green',
-      label: t('play'),
-      labelSize: 36,
-      glyph: 'play',
-      glyphSize: 30,
-      pulse: true,
-      onClick: () => this.startGame(),
-    })
-    this.root.add(play)
-    this.popIn(play, { delay: 380 })
-    this.playButton = play
-
-    // maskot, butonun yanında
-    if (this.textures.exists('mascot_happy')) {
-      const mh = Phaser.Math.Clamp(areaH * 0.34, 110, 190)
-      const mascot = this.add.image(0, playY - 34, 'mascot_happy').setOrigin(0.5, 1)
-      mascot.setScale(mh / mascot.height)
-      mascot.x = Math.min(L.cx + medalR + 40, L.colX + L.colW - mascot.displayWidth * 0.36)
-      if (L.colW < 360)
-        mascot.setVisible(false)
-      this.root.addAt(mascot, this.root.getIndex(play))
-      breathe(this, mascot, 0.035, 1300)
-      this.popIn(mascot, { delay: 500, dy: 40 })
-    }
+    const levelUpFrom = this.registry.get('levelUpFrom')
+    this.registry.remove('levelUpFrom')
+    const hop = !this.sceneData.instant && levelUpFrom === p.profile.gameLevel - 1
+    this.buildRoad(headerBottom + 8, navTop - 6, p.profile.gameLevel, hop)
   }
 
+  // ---------------------------------------------------------------------------
+  // Üst çubuk: enerji | altın + elmas
+  // ---------------------------------------------------------------------------
   buildHeader() {
     const L = this.L
     const p = player()
@@ -144,50 +82,139 @@ export default class MenuScene extends BaseScene {
     return plankH
   }
 
-  buildBottomNav() {
+  // ---------------------------------------------------------------------------
+  // Yan butonlar: ayarlar | bedava elmas + reklam kaldır
+  // ---------------------------------------------------------------------------
+  buildRails(top) {
     const L = this.L
     const p = player()
-    const btn = Math.min(84, (L.colW - 60) / 3 - 12)
-    const navH = btn + 40
-    const top = L.bottom - navH - 6
-    const nav = this.add.container(0, 0)
+    const size = 52
+    const leftX = L.colX + 14 + size / 2
+    const rightX = L.colX + L.colW - 14 - size / 2
+    const startY = top + 16 + size / 2
+    const step = size + 30
+    const items = []
 
-    const plank = this.add.graphics()
-    const pw = Math.min(L.colW - 16, 440)
-    drawPlank(plank, pw, navH - 8, { radius: 24 })
-    plank.setPosition(L.cx, top + navH / 2)
-    nav.add(plank)
+    items.push(this.railButton(leftX, startY, { color: 'blue', icon: 'ic_cog', label: t('settings'), onClick: () => this.go(SCENES.Settings) }))
 
-    const items = [
-      { key: 'inventory', icon: 'ic_backpack', scene: SCENES.Inventory, color: 'grey' },
-      { key: 'shop', icon: 'ic_shop', scene: SCENES.Shop, color: 'grey' },
-      { key: 'orders', icon: 'ic_order', scene: SCENES.Orders, color: 'grey' },
-    ]
-    const spacing = Math.min(pw / 3, btn + 40)
-    items.forEach((item, i) => {
-      const x = L.cx + (i - 1) * spacing
-      const y = top + navH / 2 - 10
-      const b = new Button(this, x, y, {
-        w: btn,
-        h: btn,
-        shape: 'round',
-        color: item.color,
-        icon: item.icon,
-        iconSize: btn * 0.62,
-        onClick: () => this.go(item.scene),
+    let ry = startY
+    if (canWatchAds()) {
+      const btn = this.railButton(rightX, ry, {
+        color: 'purple',
+        icon: 'ic_diamonds',
+        label: `+${AD_REWARDS.diamonds}`,
+        onClick: async () => {
+          btn.setDisabled(true)
+          const ok = await claimFreeDiamonds(this)
+          if (!this.sys.isActive())
+            return
+          btn.setDisabled(false)
+          if (ok) {
+            this.refreshCurrencies()
+            this.flyReward('ic_diamond', btn, this.currencyBadges.diamond)
+            btn.setBadge(player().adsLeftToday || null, { color: 0x16BB77, stroke: '#04502f' })
+          }
+        },
       })
-      const label = makeText(this, x, y + btn / 2 + 4, t(item.key), { size: 15, stroke: '#3b230d', strokeW: 4, shadowY: 2 })
-      fitText(label, spacing - 6)
-      nav.add([b, label])
+      btn.setBadge(p.adsLeftToday || null, { color: 0x16BB77, stroke: '#04502f' })
+      // "video" işareti
+      const play = this.add.graphics()
+      play.fillStyle(0xFFFFFF).fillCircle(-size * 0.32, size * 0.24, 9)
+      play.fillStyle(0x8B5CF6).fillTriangle(-size * 0.32 - 3, size * 0.24 - 5, -size * 0.32 - 3, size * 0.24 + 5, -size * 0.32 + 5, size * 0.24)
+      btn.add(play)
+      items.push(btn)
+      ry += step
+    }
+    if (!p.settings.adsRemoved) {
+      const btn = this.railButton(rightX, ry, {
+        color: 'red',
+        icon: 'ic_remove_ads',
+        label: t('remove_ads'),
+        onClick: () => this.removeAds(btn),
+      })
+      items.push(btn)
+    }
+    this.popIn(items, { delay: 200, stagger: 70 })
+  }
+
+  railButton(x, y, o) {
+    const size = 52
+    const b = new Button(this, x, y, { w: size, h: size, shape: 'round', color: o.color, icon: o.icon, iconSize: size * 0.66, onClick: o.onClick })
+    const label = makeText(this, 0, size / 2 + 10, o.label, { size: 12, stroke: '#1d1006', strokeW: 3.5, shadowY: 1 })
+    fitText(label, 74)
+    const bg = this.add.graphics()
+    drawPill(bg, 0, size / 2 + 10, Math.max(40, label.displayWidth + 14), 20, { fill: 0x1D1006, alpha: 0.7, border: 0x1D1006, borderAlpha: 0.4, gloss: false })
+    b.add([bg, label])
+    this.root.add(b)
+    return b
+  }
+
+  // ---------------------------------------------------------------------------
+  // Alt çubuk: Envanter | Market | OYNA | Siparişler | Kasalar
+  // ---------------------------------------------------------------------------
+  buildBottomBar() {
+    const L = this.L
+    const p = player()
+    const barH = 84
+    const top = L.bottom - barH
+    const bar = this.add.container(0, 0)
+    const fullH = L.dh - top
+    const tile = this.add.tileSprite(0, top, L.dw / 0.5, fullH / 0.5, 'bg_wood').setOrigin(0).setScale(0.5)
+    const edge = this.add.graphics()
+    edge.fillStyle(0x000000, 0.25).fillRect(0, top - 5, L.dw, 5)
+    edge.fillStyle(0x3B230D).fillRect(0, top, L.dw, 4)
+    edge.fillStyle(0xFFFFFF, 0.12).fillRect(0, top + 4, L.dw, 3)
+    edge.fillStyle(0x000000, 0.12).fillRect(0, top, L.dw, fullH)
+    bar.add([tile, edge])
+
+    const slotW = Math.min(L.colW / 5, 96)
+    const btn = Math.min(54, slotW - 14)
+    const cy = top + barH / 2 - 8
+    const items = [
+      { key: 'inventory', icon: 'ic_backpack', scene: SCENES.Inventory },
+      { key: 'shop', icon: 'ic_shop', scene: SCENES.Shop },
+      null,
+      { key: 'orders', icon: 'ic_order', scene: SCENES.Orders },
+      { key: 'cases', icon: 'case_gear', scene: SCENES.Cases },
+    ]
+    items.forEach((item, i) => {
+      if (!item)
+        return
+      const x = L.cx + (i - 2) * slotW
+      const b = new Button(this, x, cy, { w: btn, h: btn, shape: 'round', color: 'grey', icon: item.icon, iconSize: btn * 0.7, onClick: () => this.go(item.scene) })
+      const label = makeText(this, x, cy + btn / 2 + 9, t(item.key), { size: 12, stroke: '#3b230d', strokeW: 3.5, shadowY: 1.5 })
+      fitText(label, slotW - 4)
+      bar.add([b, label])
       if (item.key === 'orders') {
         const ready = (p.orders || []).filter(o => o && this.canFulfill(o)).length
         if (ready)
           b.setBadge(ready, { color: 0x16BB77, stroke: '#04502f' })
       }
-      this.popIn(b, { delay: 260 + i * 70, dy: 40 })
+      if (item.key === 'cases' && p.canOpenFreeCase())
+        b.setBadge('!', { color: 0xEE2747 })
     })
-    this.root.add(nav)
-    return top
+
+    // ortada yükseltilmiş OYNA butonu
+    const play = new Button(this, L.cx, top - 2, {
+      w: Math.min(140, slotW * 1.5),
+      h: 74,
+      color: 'green',
+      label: t('play'),
+      labelSize: 30,
+      glyph: 'play',
+      glyphSize: 26,
+      pulse: true,
+      onClick: () => this.startGame(),
+    })
+    bar.add(play)
+    this.playButton = play
+    this.root.add(bar)
+
+    if (!this.sceneData.instant) {
+      bar.y = barH + 40
+      this.tweens.add({ targets: bar, y: 0, duration: 480, delay: 100, ease: 'Back.easeOut' })
+    }
+    return top - 40
   }
 
   canFulfill(order) {
@@ -197,69 +224,262 @@ export default class MenuScene extends BaseScene {
     return Object.entries(order.requirements).every(([id, n]) => (p.inventory.fruitInventory[id] || 0) >= n)
   }
 
-  buildMedal(x, y, r, level) {
-    const c = this.add.container(x, y)
-    this.root.add(c)
-    sunburst(this, c, 0, 0, r * 2.1, { color: 0xFFF1A8, alpha: 0.22, rays: 16 })
-    const glow = this.add.image(0, 0, 'fx_glow').setScale((r * 3.2) / 64).setTint(0xFFE27A).setAlpha(0.55)
-    c.add(glow)
+  // ---------------------------------------------------------------------------
+  // Seviye yolu
+  // ---------------------------------------------------------------------------
+  buildRoad(areaTop, areaBottom, current, hop) {
+    const L = this.L
+    const areaH = areaBottom - areaTop
+    const dy = Phaser.Math.Clamp(areaH / 5.3, 78, 118)
+    const curY = areaTop + areaH * 0.6
+    const amp = Math.min(L.colW * 0.2, 86)
+    const posOf = level => ({
+      x: L.cx + Math.sin(level * 0.95) * amp,
+      y: curY - (level - current) * dy,
+    })
 
-    const g = this.add.graphics()
-    g.fillStyle(0x000000, 0.3).fillCircle(0, 8, r)
-    g.fillStyle(0x8A5A00).fillCircle(0, 0, r)
-    g.fillStyle(0xDEA312).fillCircle(0, -2, r - 4)
-    g.fillStyle(0xFFCC00).fillCircle(0, -2, r - 12)
-    g.fillStyle(0xFFEA9C, 0.7).fillEllipse(0, -r * 0.42, r * 1.3, r * 0.6)
-    g.fillStyle(0xFFFFFF, 0.75).fillEllipse(-r * 0.45, -r * 0.55, r * 0.3, r * 0.16)
-    // küçük yıldızlar halkası
-    g.fillStyle(0xFFF6CF)
-    for (let i = 0; i < 12; i++) {
-      const a = (Math.PI * 2 * i) / 12
-      fillStar(g, Math.cos(a) * (r - 7.5), -2 + Math.sin(a) * (r - 7.5), 5, 3.2, 1.4)
+    const road = this.add.container(0, 0)
+    this.root.addAt(road, 0)
+    const maskG = this.make.graphics({ add: false })
+    maskG.fillStyle(0xFFFFFF).fillRect(0, areaTop * L.s, L.W, (areaH + 12) * L.s)
+    road.setMask(maskG.createGeometryMask())
+    this.events.once('shutdown', () => maskG.destroy())
+
+    const first = Math.max(1, current - ROAD_BEHIND)
+    const last = current + ROAD_AHEAD
+
+    // patika: düğümler arasından geçen noktalı iz
+    const trail = this.add.graphics()
+    road.add(trail)
+    for (let lv = first; lv < last; lv++) {
+      const a = posOf(lv)
+      const b = posOf(lv + 1)
+      const done = lv < current
+      const curve = new Phaser.Curves.CubicBezier(
+        new Phaser.Math.Vector2(a.x, a.y),
+        new Phaser.Math.Vector2(a.x, a.y - dy * 0.45),
+        new Phaser.Math.Vector2(b.x, b.y + dy * 0.45),
+        new Phaser.Math.Vector2(b.x, b.y),
+      )
+      const pts = curve.getSpacedPoints(Math.max(4, Math.round(curve.getLength() / 13)))
+      pts.forEach((pt, i) => {
+        if (i === 0 || i === pts.length - 1)
+          return
+        trail.fillStyle(0x3B230D, 0.35).fillCircle(pt.x, pt.y + 1.5, 4.2)
+        trail.fillStyle(done ? 0xFFF3C4 : 0xD9C7A3, done ? 0.95 : 0.7).fillCircle(pt.x, pt.y, 3.6)
+      })
     }
-    c.add(g)
 
-    const label = makeText(this, 0, -r * 0.4, t('level'), { size: r * 0.26, stroke: '#8a5a00', strokeW: 4, shadowY: 2 })
-    fitText(label, r * 1.4)
-    const num = makeText(this, 0, r * 0.12, String(level), { size: r * 0.78, stroke: '#7a4a00', strokeW: 8, shadowY: 5 })
-    fitText(num, r * 1.5)
-    c.add([label, num])
+    this.nodes = {}
+    for (let lv = last; lv >= first; lv--) {
+      const pos = posOf(lv)
+      const state = lv < current ? 'done' : (lv === current && !hop ? 'current' : 'locked')
+      const node = this.createNode(lv, state)
+      node.setPosition(pos.x, pos.y)
+      road.add(node)
+      this.nodes[lv] = node
+    }
 
-    // seviye madalyonu altında kurdele: sıradaki ödül/ilerleme yok, sadece süs
-    const ribbon = this.add.graphics()
-    ribbon.fillStyle(0xCD0B2A).fillTriangle(-r * 0.55, r * 0.7, -r * 0.2, r * 0.7, -r * 0.5, r * 1.25)
-    ribbon.fillStyle(0xCD0B2A).fillTriangle(r * 0.55, r * 0.7, r * 0.2, r * 0.7, r * 0.5, r * 1.25)
-    c.addAt(ribbon, 2)
+    // maskot mevcut seviyenin yanında (yolun ortaya bakan tarafında)
+    const sideOf = lv => (Math.sin(lv * 0.95) > 0 ? -1 : 1)
+    const place = lv => ({ x: posOf(lv).x + sideOf(lv) * 68, y: posOf(lv).y + 32 })
+    const mascot = this.add.image(0, 0, 'mascot_happy').setOrigin(0.5, 1)
+    mascot.setScale(Phaser.Math.Clamp(dy * 1.15, 90, 130) / mascot.height)
+    road.add(mascot)
+    this.mascot = mascot
+    const target = place(current)
 
-    bob(this, c, 7, 1700)
+    if (hop && current > 1) {
+      const from = place(current - 1)
+      mascot.setPosition(from.x, from.y)
+      this.time.delayedCall(750, () => this.playLevelUp(current, target))
+    }
+    else {
+      mascot.setPosition(target.x, target.y)
+      breathe(this, mascot, 0.035, 1300)
+    }
+
     if (!this.sceneData.instant) {
-      c.setScale(0.3).setAlpha(0)
-      this.tweens.add({ targets: c, scale: 1, alpha: 1, duration: 650, delay: 200, ease: 'Back.easeOut' })
+      const nodes = Object.values(this.nodes).sort((a, b) => b.y - a.y)
+      nodes.forEach((n, i) => {
+        const sc = n.scale
+        n.setScale(0)
+        this.tweens.add({ targets: n, scale: sc, delay: 150 + i * 55, duration: 380, ease: 'Back.easeOut' })
+      })
+      trail.setAlpha(0)
+      this.tweens.add({ targets: trail, alpha: 1, duration: 500, delay: 100 })
+      if (!hop) {
+        const my = mascot.y
+        mascot.y = my - 40
+        mascot.setAlpha(0)
+        this.tweens.add({ targets: mascot, y: my, alpha: 1, duration: 500, delay: 450, ease: 'Bounce.easeOut' })
+      }
     }
-    this.medal = c
   }
 
-  /** Arka planda yavaşça yükselen yarı saydam meyveler. */
-  addAmbientFruits() {
+  createNode(level, state) {
+    const c = this.add.container(0, 0)
+    c.level = level
+    c.state = state
+    const big = state === 'current'
+    const r = big ? 40 : 27
+    const g = this.add.graphics()
+    c.add(g)
+    this.drawNode(g, state)
+
+    if (big) {
+      const rays = sunburst(this, null, 0, 0, r * 2.2, { color: 0xFFF1A8, alpha: 0.35, rays: 12 })
+      const glow = this.add.image(0, 0, 'fx_glow').setScale((r * 3.4) / 64).setTint(0xFFE27A).setAlpha(0.7)
+      c.addAt([rays, glow], 0)
+      this.tweens.add({ targets: g, scale: 1.06, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+      // üstte zıplayan ok
+      const arrow = this.add.graphics()
+      arrow.fillStyle(0x3B230D).fillTriangle(-13, -r - 30, 13, -r - 30, 0, -r - 12)
+      arrow.fillStyle(0xFFFFFF).fillTriangle(-9, -r - 28, 9, -r - 28, 0, -r - 16)
+      c.add(arrow)
+      this.tweens.add({ targets: arrow, y: -8, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    }
+
+    const label = makeText(this, 0, big ? 2 : 0, String(level), {
+      size: big ? 34 : 20,
+      stroke: big ? '#7a4a00' : (state === 'done' ? '#04502f' : '#3f4152'),
+      strokeW: big ? 7 : 4.5,
+      shadowY: big ? 4 : 2,
+    })
+    fitText(label, r * 1.5)
+    c.add(label)
+
+    if (state === 'done') {
+      const check = this.add.graphics()
+      const cx = r * 0.72
+      const cy = -r * 0.72
+      check.fillStyle(0xFFFFFF).fillCircle(cx, cy, 9)
+      check.fillStyle(0x16BB77).fillCircle(cx, cy, 7.5)
+      check.lineStyle(2.5, 0xFFFFFF).beginPath().moveTo(cx - 3.5, cy).lineTo(cx - 1, cy + 3).lineTo(cx + 4, cy - 3).strokePath()
+      c.add(check)
+    }
+    if (state === 'locked') {
+      const lock = this.add.image(r * 0.68, r * 0.62, 'ic_lock').setScale(24 / 256)
+      c.add(lock)
+      c.lock = lock
+    }
+    if (level % 10 === 0) {
+      const crown = this.add.image(0, -r - 10, 'ic_crown').setScale((big ? 40 : 30) / 256)
+      c.add(crown)
+    }
+
+    c.setSize(r * 2.2, r * 2.2)
+    c.setInteractive({ useHandCursor: true })
+    c.on('pointerup', (pointer) => {
+      if (pointer.getDistance() > 14 * this.L.dpr)
+        return
+      if (c.state === 'current') {
+        this.startGame()
+      }
+      else if (c.state === 'locked') {
+        sfx('error_effect')
+        shake(this, c, { amount: 5, repeat: 2 })
+      }
+      else {
+        this.tweens.add({ targets: c, scale: { from: 0.85, to: 1 }, duration: 260, ease: 'Back.easeOut' })
+      }
+    })
+    return c
+  }
+
+  drawNode(g, state) {
+    const big = state === 'current'
+    const r = big ? 40 : 27
+    const pal = big ? BTN.yellow : (state === 'done' ? BTN.green : BTN.grey)
+    g.clear()
+    g.fillStyle(0x000000, 0.3).fillEllipse(0, r * 0.72, r * 2, r * 0.7)
+    g.fillStyle(pal.depth).fillCircle(0, 4, r)
+    g.fillStyle(pal.rim).fillCircle(0, 0, r)
+    g.fillStyle(pal.face).fillCircle(0, 0, r - (big ? 5 : 3.5))
+    g.fillStyle(pal.light, 0.65).fillEllipse(0, -r * 0.4, r * 1.3, r * 0.65)
+    g.fillStyle(0xFFFFFF, 0.6).fillEllipse(-r * 0.42, -r * 0.5, r * 0.32, r * 0.18)
+    if (big) {
+      g.fillStyle(0xFFF6CF)
+      for (let i = 0; i < 10; i++) {
+        const a = (Math.PI * 2 * i) / 10
+        fillStar(g, Math.cos(a) * (r - 2.5), Math.sin(a) * (r - 2.5), 5, 2.6, 1.1)
+      }
+    }
+  }
+
+  /** Kazandıktan sonra: kilit kırılır, düğüm altına döner, maskot yeni seviyeye zıplar. */
+  playLevelUp(level, to) {
+    const node = this.nodes[level]
+    if (!node)
+      return
+    sfx('success_effect')
+    if (node.lock)
+      this.tweens.add({ targets: node.lock, y: node.lock.y - 22, angle: 45, alpha: 0, duration: 420, ease: 'Back.easeIn' })
+    this.time.delayedCall(380, () => {
+      const parent = node.parentContainer
+      burst(this, parent, node.x, node.y, { texture: 'fx_star', tint: [0xFFE066, 0xFFFFFF, 0x9BFF8A], count: 18, speed: { min: 120, max: 300 }, scale: { start: 0.55, end: 0 }, gravityY: 250 })
+      const replacement = this.createNode(level, 'current')
+      replacement.setPosition(node.x, node.y)
+      parent.addAt(replacement, parent.getIndex(node))
+      node.destroy()
+      this.nodes[level] = replacement
+      replacement.setScale(0.3)
+      this.tweens.add({ targets: replacement, scale: 1, duration: 500, ease: 'Back.easeOut' })
+    })
+    this.time.delayedCall(260, () => {
+      sfx('put_effect')
+      flyArc(this, this.mascot, to.x, to.y, {
+        duration: 650,
+        lift: 70,
+        ease: 'Sine.easeInOut',
+        onComplete: () => {
+          burst(this, this.mascot.parentContainer, to.x, to.y, { texture: 'fx_dot', tint: 0xD9C7A3, count: 10, speed: { min: 40, max: 120 }, scale: { start: 0.35, end: 0 }, gravityY: 100, angle: { min: 200, max: 340 } })
+          breathe(this, this.mascot, 0.035, 1300)
+        },
+      })
+    })
+  }
+
+  /** Arka planda süzülen yapraklar. */
+  addFallingLeaves() {
     const L = this.L
-    const emitter = this.add.particles(0, 0, 'game-atlas', {
-      frame: FRUIT_IDS.map(id => `${id}.png`),
-      x: { min: 0, max: L.W },
-      y: L.H + 40,
-      speedY: { min: -40 * L.s, max: -80 * L.s },
-      speedX: { min: -10 * L.s, max: 10 * L.s },
-      rotate: { min: -40, max: 40 },
-      scale: { min: 0.08 * L.s, max: 0.16 * L.s },
-      alpha: { start: 0.55, end: 0 },
-      lifespan: 14000,
-      frequency: 900,
+    const emitter = this.add.particles(0, 0, 'fx_leaf', {
+      x: { min: -40, max: L.W },
+      y: -30,
+      speedY: { min: 30 * L.s, max: 70 * L.s },
+      speedX: { min: 10 * L.s, max: 40 * L.s },
+      rotate: { start: 0, end: 360 },
+      scale: { min: 0.5 * L.s, max: 0.9 * L.s },
+      alpha: { start: 0.85, end: 0.2 },
+      tint: [0x7CB342, 0x9CCC65, 0xFFB74D, 0xF57C00],
+      lifespan: 16000,
+      frequency: 1400,
       quantity: 1,
     })
-    emitter.fastForward(9000)
+    emitter.fastForward(10000)
     this.bgLayer.add(emitter)
     const shade = this.add.graphics()
-    drawVerticalFade(shade, 0, L.H * 0.55, L.W, L.H * 0.45, COLORS.woodDark, 0, 0.35)
+    drawVerticalFade(shade, 0, L.H * 0.6, L.W, L.H * 0.4, 0x1D1006, 0, 0.3)
     this.bgLayer.add(shade)
+  }
+
+  /** Ödül ikonlarını butondan para rozetine uçurur. */
+  flyReward(icon, fromObj, badge) {
+    const s = this.L.s
+    const m = fromObj.getWorldTransformMatrix()
+    const target = badge.getIconWorldPoint()
+    for (let i = 0; i < 5; i++) {
+      const img = this.add.image(m.tx / s, m.ty / s, icon).setScale(30 / 256)
+      this.root.add(img)
+      flyArc(this, img, target.x / s, target.y / s, {
+        delay: i * 70,
+        duration: 600,
+        lift: 80,
+        curve: Phaser.Math.Between(-50, 50),
+        endScale: 22 / 256,
+        onComplete: () => img.destroy(),
+      })
+    }
   }
 
   startGame() {
@@ -274,6 +494,7 @@ export default class MenuScene extends BaseScene {
       return
     if (result.success) {
       player().removeAds()
+      admobService.onAdsRemoved()
       toastService.show(t('ads_removed'), 'success')
       this.tweens.add({ targets: button, scale: 0, alpha: 0, duration: 300, ease: 'Back.easeIn', onComplete: () => button.destroy() })
     }

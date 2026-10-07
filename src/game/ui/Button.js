@@ -205,14 +205,29 @@ export default class Button extends Phaser.GameObjects.Container {
     if (this.clipTest && !this.clipTest(pointer))
       return
     this.isDown = true
+    this.longPressed = false
     this.setPressed(true)
+    if (this.opts.onLongPress) {
+      this.longPressTimer?.remove()
+      this.longPressTimer = this.scene.time.delayedCall(450, () => {
+        if (!this.isDown)
+          return
+        this.longPressed = true
+        this.opts.onLongPress(this)
+      })
+    }
   }
 
   onUp(pointer) {
     if (!this.isDown)
       return
     this.isDown = false
+    this.longPressTimer?.remove()
     this.setPressed(false)
+    if (this.longPressed) {
+      this.opts.onLongPressEnd?.(this)
+      return
+    }
     const dpr = this.scene.game.registry.get('dpr') || 1
     if (pointer.getDistance() > 14 * dpr)
       return
@@ -224,9 +239,12 @@ export default class Button extends Phaser.GameObjects.Container {
   }
 
   onOut() {
+    this.longPressTimer?.remove()
     if (this.isDown) {
       this.isDown = false
       this.setPressed(false)
+      if (this.longPressed)
+        this.opts.onLongPressEnd?.(this)
     }
     if (this.hovered) {
       this.hovered = false

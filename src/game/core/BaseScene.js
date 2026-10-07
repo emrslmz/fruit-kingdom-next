@@ -1,6 +1,5 @@
 import Phaser from 'phaser'
 import { admobService } from '@/core/services/admobService'
-import { mobileService } from '@/core/services/MobileService'
 import { SCENES } from '../config'
 import Button from '../ui/Button'
 import CurrencyBadge from '../ui/CurrencyBadge'
@@ -27,6 +26,9 @@ export default class BaseScene extends Phaser.Scene {
     this.isTransitioning = false
     this.modals = []
     this.currencyBadges = {}
+    // Banner sadece oyun ekranında görünür
+    if (this.scene.key !== SCENES.Game)
+      admobService.hideBanner()
     this.L = computeLayout(this)
     this.bgLayer = this.add.container(0, 0)
     this.root = this.add.container(0, 0).setScale(this.L.s)
@@ -94,9 +96,6 @@ export default class BaseScene extends Phaser.Scene {
     if (this.isTransitioning)
       return
     this.isTransitioning = true
-    // Geçiş reklamı: her 10 ekran geçişinde bir (reklamlar kaldırılmadıysa).
-    if (mobileService.isNative && player().handleNavigation())
-      admobService.showInterstitialAd()
     const overlay = this.scene.get(SCENES.Overlay)
     if (overlay?.transition) {
       overlay.transition(() => this.scene.start(key, data))

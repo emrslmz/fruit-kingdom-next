@@ -3,6 +3,7 @@ import { admobService } from '@/core/services/admobService'
 import { mobileService } from '@/core/services/MobileService'
 import { toastService } from '@/core/services/ToastService'
 import { powerUpKey, queueBackground } from '../assets'
+import { canWatchAds, levelEndInterstitial, watchRewardedAd } from '../core/ads'
 import { BTN, FRUIT_COLORS, SCENES } from '../config'
 import BaseScene from '../core/BaseScene'
 import { haptic, player, sfx, t } from '../core/services'
@@ -20,6 +21,8 @@ const POWER_UPS = ['dynamite', 'brush', 'tornado']
 const COMBO_KEYS = ['combo_good', 'combo_great', 'combo_awesome', 'combo_amazing']
 const CONTINUE_COST = 50
 const HINT_DELAY = 7000
+const DEFAULT_BANNER_HEIGHT = 60 // CSS px; gerçek yükseklik reklam yüklenince gelir
+const MOCK_BANNER_HEIGHT = 56
 
 function destroyAll(...objects) {
   for (const obj of objects)
@@ -48,6 +51,7 @@ export default class GameScene extends BaseScene {
       endModal: this.endModalKind,
       paused: this.modals.some(m => m.kind === 'pause'),
       goalTypes: this.goalTypes,
+      doubled: this.doubled,
     }
   }
 
@@ -56,6 +60,10 @@ export default class GameScene extends BaseScene {
     this.level = data.level ?? p.profile.gameLevel
     this.board = data.board ?? new Board(this.level)
     this.continueUsed = data.continueUsed ?? false
+    this.doubled = data.doubled ?? false
+    this.leaving = false
+    this.tooltip = null
+    this.aimUI = null
     this.endModalKind = null
     this.tiles = new Map()
     this.vTray = []
@@ -71,7 +79,11 @@ export default class GameScene extends BaseScene {
     this.dangerLevel = 0
     this.dangerTween = null
     this.phase = 'playing'
-    this.bannerReserved = mobileService.isNative && !p.settings.adsRemoved
+    // Banner: native'de gerçek AdMob, geliştirmede (web) yer tutucu
+    this.bannerMode = p.settings.adsRemoved ? null : (mobileService.isNative ? 'native' : (import.meta.env.DEV ? 'mock' : null))
+    this.bannerCss = this.bannerMode === 'mock'
+      ? MOCK_BANNER_HEIGHT
+      : (admobService.bannerStatus === 'failed' ? 0 : (admobService.bannerHeight || DEFAULT_BANNER_HEIGHT))
     this.goalTypes = Object.keys(this.board.remaining()).sort()
     if (data.goalTypes)
       this.goalTypes = data.goalTypes
@@ -104,12 +116,7 @@ export default class GameScene extends BaseScene {
       sfx('start_effect')
     }
 
-    if (this.bannerReserved && !data.instant)
-      admobService.showBannerAd()
-    this.events.once('shutdown', () => {
-      if (this.bannerReserved)
-        admobService.hideBannerAd()
-    })
+    this.setupBanner()
 
     this.time.addEvent({ delay: 1000, loop: true, callback: () => this.tickHint() })
 
@@ -145,16 +152,20 @@ export default class GameScene extends BaseScene {
     G.goalH = 34
     G.hudBottom = G.goalsTop + G.goalRows * (G.goalH + 4)
 
-    // AdMob uyarlanabilir banner (~50-60px) + 10px kenar boşluğu, CSS pikseli
-    G.bannerH = this.bannerReserved ? 72 / L.ui : 0
+    // Banner'ın gerçek yüksekliği (CSS px) kadar alttan yer ayrılır
+    G.bannerH = this.bannerMode ? this.bannerCss / L.ui : 0
     const bottom = L.bottom - G.bannerH - 6
-    G.powerSize = 62
-    G.powerY = bottom - G.powerSize / 2 - 4
+    G.powerSize = 56
+    G.shelfW = Math.min(G.colW - 24, 340)
+    G.shelfH = G.powerSize + 30
+    G.shelfY = bottom - G.shelfH / 2
+    G.powerY = G.shelfY - 8
+    G.powerLabelY = G.shelfY + G.shelfH / 2 - 12
     G.trayW = Math.min(G.colW - 14, 440)
     G.slot = Math.min((G.trayW - 24) / TRAY_SIZE - 4, 56)
     G.slotGap = (G.trayW - 24 - G.slot * TRAY_SIZE) / (TRAY_SIZE - 1)
     G.trayH = G.slot + 22
-    G.trayY = G.powerY - G.powerSize / 2 - 16 - G.trayH / 2
+    G.trayY = G.shelfY - G.shelfH / 2 - 12 - G.trayH / 2
     G.trayTop = G.trayY - G.trayH / 2
 
     G.boardTop = G.hudBottom + 24
@@ -173,6 +184,31 @@ export default class GameScene extends BaseScene {
 
   get visibleRows() {
     return this.G.visibleRows
+  }
+
+  setupBanner() {
+    if (!this.bannerMode)
+      return
+    if (this.bannerMode === 'mock') {
+      // Geliştirme: banner'ın kaplayacağı alanı göster
+      const L = this.L
+      const h = this.G.bannerH
+      const y = L.bottom - h
+      const g = this.add.graphics()
+      g.fillStyle(0x10161C, 0.85).fillRect(0, y, L.dw, h + L.safeBottom)
+      g.lineStyle(2, 0x36BDF7, 0.8).strokeRect(L.cx - 160, y + 4, 320, h - 8)
+      const label = makeText(this, L.cx, y + h / 2, 'AdMob Banner (test)', { size: 15, color: '#9fd9f5', stroke: '#0b1a22', strokeW: 3 })
+      this.hudLayer.add([g, label])
+      return
+    }
+    admobService.showBanner()
+    // Banner yüklenince/başarısız olunca alanı gerçek yüksekliğe göre yeniden kur
+    const off = admobService.onBannerHeight((height, status) => {
+      const next = status === 'failed' ? 0 : (height || DEFAULT_BANNER_HEIGHT)
+      if (Math.abs(next - this.bannerCss) > 4 && this.sys.isActive())
+        this.onResize()
+    })
+    this.events.once('shutdown', off)
   }
 
   applyBoardMask() {
@@ -406,6 +442,7 @@ export default class GameScene extends BaseScene {
   }
 
   updateTrayDanger() {
+    this.updatePowerUpStates()
     const count = this.vTray.filter(e => !e.matchGroup).length
     const level = count >= TRAY_SIZE - 1 ? 2 : (count >= TRAY_SIZE - 2 ? 1 : 0)
     if (level === this.dangerLevel)
@@ -430,8 +467,13 @@ export default class GameScene extends BaseScene {
   // Dokunma
   // ===========================================================================
   handleTap(id) {
-    if (this.phase !== 'playing' || this.modals.length)
+    if (this.phase === 'aiming') {
+      this.doSmash(id)
       return
+    }
+    if (this.phase !== 'playing' || this.modals.length || this.powerBusy)
+      return
+    this.hidePowerTooltip()
     if (this.vTray.length >= TRAY_SIZE) {
       // Görsel sepet dolu ama bir eşleşme patlamak üzere: dokunuşu sıraya al
       if (this.vTray.some(e => e.matchGroup))
@@ -748,6 +790,7 @@ export default class GameScene extends BaseScene {
   }
 
   updateGoals(animate) {
+    this.updatePowerUpStates()
     const remaining = this.board.remaining()
     for (const [type, chip] of this.goalChips) {
       const n = remaining[type] || 0
@@ -778,25 +821,45 @@ export default class GameScene extends BaseScene {
     const G = this.G
     const L = this.L
     this.powerButtons = {}
-    const spacing = Math.min(96, G.colW / 3.4)
+    this.powerGlows = {}
+    this.powerGlowTweens = {}
+
+    const shelf = this.add.graphics()
+    drawPlank(shelf, G.shelfW, G.shelfH, { radius: 24, nails: false })
+    shelf.setPosition(L.cx, G.shelfY)
+    this.hudLayer.add(shelf)
+    const anim = [shelf]
+
+    const spacing = G.shelfW / 3
     POWER_UPS.forEach((id, i) => {
-      const b = new Button(this, L.cx + (i - 1) * spacing, G.powerY, {
+      const x = L.cx + (i - 1) * spacing
+      const glow = this.add.image(x, G.powerY, 'fx_glow').setTint(0xFFF27A).setScale((G.powerSize * 2) / 64).setAlpha(0)
+      const b = new Button(this, x, G.powerY, {
         w: G.powerSize,
         h: G.powerSize,
         shape: 'round',
         color: 'yellow',
         icon: powerUpKey(id),
-        iconSize: G.powerSize * 0.78,
+        iconSize: G.powerSize * 0.82,
         onClick: () => this.usePowerUp(id),
+        onLongPress: () => this.showPowerTooltip(id),
+        onLongPressEnd: () => this.hidePowerTooltip(),
       })
-      this.hudLayer.add(b)
+      const label = makeText(this, x, G.powerLabelY, t(id), { size: 13, stroke: '#3b230d', strokeW: 3.5, shadowY: 1.5 })
+      fitText(label, spacing - 10)
+      this.hudLayer.add([glow, b, label])
       this.powerButtons[id] = b
-      if (!this.sceneData.instant) {
-        const y = b.y
-        b.y = y + 120
-        this.tweens.add({ targets: b, y, duration: 520, delay: 200 + i * 80, ease: 'Back.easeOut' })
-      }
+      this.powerGlows[id] = glow
+      anim.push(glow, b, label)
     })
+
+    if (!this.sceneData.instant) {
+      anim.forEach((obj) => {
+        const y = obj.y
+        obj.y = y + 140
+        this.tweens.add({ targets: obj, y, duration: 520, delay: 200, ease: 'Back.easeOut' })
+      })
+    }
     this.refreshPowerUps()
   }
 
@@ -811,113 +874,366 @@ export default class GameScene extends BaseScene {
         b.setBadge('+', { color: 0x16BB77, stroke: '#04502f' })
     }
     this.diamondBadge?.setValue(p.currencies.diamonds)
+    this.updatePowerUpStates()
+  }
+
+  /** Güçlendirme şu an bir işe yarar mı? Yaramazsa nedeni (i18n anahtarı). */
+  powerBlockReason(id) {
+    const { bushes, ices } = this.board.countBlocks()
+    if (id === 'dynamite')
+      return this.board.boardCount ? null : 'no_matching_3_fruits_to_explode'
+    if (id === 'brush')
+      return bushes ? null : 'no_bushes_on_board'
+    return bushes || ices ? null : 'no_blocks_on_board'
+  }
+
+  /** Görünür alandaki çalı/buz sayıları (öneri için). */
+  visibleBlocks() {
+    let bushes = 0
+    let ices = 0
+    this.board.columns.forEach(col => col.forEach((f, r) => {
+      if (r >= this.visibleRows)
+        return
+      if (f.bush)
+        bushes++
+      if (f.ice > 0)
+        ices++
+    }))
+    return { bushes, ices }
+  }
+
+  /** Kullanılamayanları soluklaştırır, o an işe yarayacak olanı parlatır. */
+  updatePowerUpStates() {
+    if (!this.powerButtons)
+      return
+    const p = player()
+    const vis = this.visibleBlocks()
+    const trayCount = this.vTray.filter(e => !e.matchGroup).length
+    const suggest = {
+      dynamite: trayCount >= TRAY_SIZE - 2,
+      brush: vis.bushes >= 3,
+      tornado: vis.ices >= 2 || vis.bushes + vis.ices >= 4,
+    }
+    for (const id of POWER_UPS) {
+      const b = this.powerButtons[id]
+      const usable = !this.powerBlockReason(id)
+      b.setAlpha(usable ? 1 : 0.55)
+      const glowOn = usable && suggest[id] && p.getPowerUpQuantity(id) > 0 && this.phase === 'playing'
+      const glow = this.powerGlows[id]
+      if (glowOn && !this.powerGlowTweens[id]) {
+        glow.setAlpha(0.2)
+        this.powerGlowTweens[id] = this.tweens.add({ targets: glow, alpha: 0.85, scale: glow.scale * 1.12, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+      }
+      else if (!glowOn && this.powerGlowTweens[id]) {
+        this.powerGlowTweens[id].stop()
+        this.powerGlowTweens[id] = null
+        this.tweens.add({ targets: glow, alpha: 0, duration: 200 })
+      }
+    }
+  }
+
+  trayBusy() {
+    return this.vTray.some(e => e.state !== 'landed' || e.popping)
   }
 
   usePowerUp(id) {
-    if (this.phase !== 'playing' || this.powerBusy)
+    if (this.phase === 'aiming') {
+      this.exitAim()
+      if (id === 'dynamite')
+        return
+    }
+    if (this.phase !== 'playing' || this.powerBusy || this.modals.length)
       return
+    this.hidePowerTooltip()
     const p = player()
     if (p.getPowerUpQuantity(id) <= 0) {
       openPowerUpPurchase(this, id, { onPurchased: () => this.refreshPowerUps() })
+      return
+    }
+    const reason = this.powerBlockReason(id)
+    if (reason) {
+      toastService.show(t(reason), 'info', 1800)
+      shake(this, this.powerButtons[id], { amount: 4, repeat: 2 })
+      return
+    }
+    if (!p.hasSeenTip(`powerup_${id}`)) {
+      this.showPowerTutorial(id)
+      return
+    }
+    if (this.trayBusy()) {
+      // sepetteki uçuş/patlama bitince kullan
+      this.time.delayedCall(120, () => this.usePowerUp(id))
       return
     }
     this.lastActionAt = this.time.now
     this.stopHint()
 
     if (id === 'dynamite') {
-      const res = this.board.hammer(this.visibleRows)
-      if (!res) {
-        toastService.show(t('no_matching_3_fruits_to_explode'), 'warning')
-        return
-      }
-      p.usePowerUp(id)
-      this.animateHammer(res)
+      this.enterAim()
+      return
     }
-    else if (id === 'brush') {
-      if (!this.board.countBlocks().bushes) {
-        toastService.show(t('no_bushes_on_board'), 'info')
-        return
-      }
-      p.usePowerUp(id)
-      const affected = this.board.clearBushes()
-      this.animateSweep('brush', affected)
-    }
-    else if (id === 'tornado') {
-      const { bushes, ices } = this.board.countBlocks()
-      if (!bushes && !ices) {
-        toastService.show(t('no_blocks_on_board'), 'info')
-        return
-      }
-      p.usePowerUp(id)
-      const affected = this.board.clearBlocks()
-      this.animateSweep('tornado', affected)
-    }
+    p.usePowerUp(id)
+    const affected = id === 'brush' ? this.board.clearBushes() : this.board.clearBlocks()
+    this.animateSweep(id, affected)
     this.refreshPowerUps()
     haptic('powerup')
   }
 
-  animateHammer(res) {
+  // --- İlk kullanım tanıtımı ve uzun basınca bilgi balonu ----------------------
+  showPowerTutorial(id) {
+    const p = player()
+    const modal = new Modal(this, { w: 330, h: 440, title: t(id), color: 'blue' })
+    modal.kind = 'tip'
+    const top = modal.innerTop
+    const glow = this.add.image(0, top + 66, 'fx_glow').setTint(0x8FD8FF).setScale(160 / 64).setAlpha(0.7)
+    const icon = this.add.image(0, top + 66, powerUpKey(id)).setScale(110 / 256)
+    this.tweens.add({ targets: icon, y: icon.y - 6, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    const desc = inkText(this, 0, top + 140, t(`${id}_description`), { size: 18, wrap: modal.w - 56, originY: 0, lineSpacing: 3 })
+    fitText(desc, modal.w - 50, 64)
+    const how = inkText(this, 0, top + 140 + desc.displayHeight + 12, t(`${id}_howto`), { size: 15, wrap: modal.w - 56, originY: 0, color: '#7a5a3a', lineSpacing: 2 })
+    fitText(how, modal.w - 50, 60)
+    const use = new Button(this, 0, modal.innerBottom - 30, {
+      w: modal.w - 70,
+      h: 58,
+      color: 'green',
+      label: t('use_it'),
+      onClick: () => modal.close('use'),
+    })
+    modal.body.add([glow, icon, desc, how, use])
+    modal.opts.onClose = (result) => {
+      if (result !== 'use')
+        return
+      p.markTipSeen(`powerup_${id}`)
+      this.time.delayedCall(60, () => this.usePowerUp(id))
+    }
+  }
+
+  showPowerTooltip(id) {
+    this.hidePowerTooltip()
+    const b = this.powerButtons[id]
+    const qty = player().getPowerUpQuantity(id)
+    const w = Math.min(250, this.G.colW - 30)
+    const c = this.add.container(0, 0)
+    const title = makeText(this, 0, 0, `${t(id)}  ×${qty}`, { size: 18, stroke: '#3b230d', strokeW: 4, originY: 0 })
+    fitText(title, w - 24)
+    const desc = inkText(this, 0, title.displayHeight + 2, t(`${id}_description`), { size: 14, wrap: w - 26, originY: 0, color: '#4a2e1b' })
+    const h = title.displayHeight + desc.displayHeight + 22
+    const g = this.add.graphics()
+    g.fillStyle(0x000000, 0.25).fillRoundedRect(-w / 2 + 2, -8 + 4, w, h, 14)
+    g.fillStyle(0x6B4724).fillRoundedRect(-w / 2, -8, w, h, 14)
+    g.fillStyle(0xFFFAE8).fillRoundedRect(-w / 2 + 3, -5, w - 6, h - 6, 12)
+    g.fillStyle(0x6B4724).fillTriangle(-10, h - 9, 10, h - 9, 0, h + 3)
+    c.add([g, title, desc])
+    const x = Phaser.Math.Clamp(b.x, this.G.left + w / 2 + 6, this.G.right - w / 2 - 6)
+    c.setPosition(x, b.y - this.G.powerSize / 2 - h - 6)
+    title.setStroke('#3b230d', 4)
+    this.fxLayer.add(c)
+    c.setScale(0.7).setAlpha(0)
+    this.tweens.add({ targets: c, scale: 1, alpha: 1, duration: 180, ease: 'Back.easeOut' })
+    this.tooltip = c
+    this.tooltipTimer = this.time.delayedCall(3200, () => this.hidePowerTooltip())
+  }
+
+  hidePowerTooltip() {
+    this.tooltipTimer?.remove()
+    const c = this.tooltip
+    if (!c)
+      return
+    this.tooltip = null
+    this.tweens.add({ targets: c, alpha: 0, scale: 0.8, duration: 150, onComplete: () => c.destroy() })
+  }
+
+  // --- Balyoz: nişan modu --------------------------------------------------------
+  enterAim() {
+    const G = this.G
+    const L = this.L
+    this.phase = 'aiming'
+    sfx('click_effect')
+    const shade = this.add.rectangle(L.cx, (G.boardTop + G.boardBottom) / 2, G.colW + 40, G.boardBottom - G.boardTop + 24, 0x000000, 0)
+    this.boardBg.add(shade)
+    this.tweens.add({ targets: shade, fillAlpha: 0.38, duration: 200 })
+
+    const bw = Math.min(G.colW - 24, 360)
+    const banner = this.add.container(L.cx, G.boardTop + 26)
+    const bg = this.add.graphics()
+    drawPlank(bg, bw, 50, { radius: 18, nails: false })
+    const icon = this.add.image(-bw / 2 + 30, -2, 'pu_dynamite').setScale(38 / 256)
+    this.tweens.add({ targets: icon, angle: { from: -12, to: 12 }, duration: 260, yoyo: true, repeat: -1 })
+    const text = makeText(this, 6, -2, t('smash_hint'), { size: 17, stroke: '#3b230d', strokeW: 4 })
+    fitText(text, bw - 120)
+    const cancel = new Button(this, bw / 2 - 26, -2, { w: 38, h: 38, shape: 'round', color: 'red', glyph: 'x', onClick: () => this.exitAim() })
+    banner.add([bg, icon, text, cancel])
+    this.fxLayer.add(banner)
+    banner.setScale(0.6).setAlpha(0)
+    this.tweens.add({ targets: banner, scale: 1, alpha: 1, duration: 260, ease: 'Back.easeOut' })
+
+    const targets = [...this.tiles.values()].filter(tile => !tile.peek)
+    this.aimTween = this.tweens.add({ targets, scale: 1.06, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    this.powerButtons.dynamite.startPulse(0.14, 300)
+    this.aimUI = { shade, banner, targets }
+  }
+
+  exitAim() {
+    if (this.phase !== 'aiming')
+      return
+    this.phase = 'playing'
+    this.aimTween?.stop()
+    this.aimTween = null
+    const ui = this.aimUI
+    this.aimUI = null
+    ui?.targets.forEach(tile => tile.active && tile.setScale(1))
+    if (ui) {
+      this.tweens.add({ targets: ui.shade, fillAlpha: 0, duration: 160, onComplete: () => ui.shade.destroy() })
+      this.tweens.add({ targets: ui.banner, alpha: 0, scale: 0.8, duration: 160, onComplete: () => ui.banner.destroy() })
+    }
+    this.powerButtons.dynamite.stopPulse()
+    this.lastActionAt = this.time.now
+  }
+
+  doSmash(id) {
+    if (this.trayBusy()) {
+      this.time.delayedCall(100, () => this.phase === 'aiming' && this.doSmash(id))
+      return
+    }
+    const tile = this.tiles.get(id)
+    if (!tile || tile.peek)
+      return
+    const res = this.board.smash(id, this.visibleRows)
+    this.exitAim()
+    if (!res)
+      return
+    player().usePowerUp('dynamite')
+    this.refreshPowerUps()
+    haptic('powerup')
+    this.animateSmash(res, id)
+  }
+
+  animateSmash(res, tappedId) {
     const G = this.G
     this.powerBusy = true
-    sfx('pop_effect')
-    const cols = new Set()
-    res.items.forEach((item, i) => {
-      cols.add(item.col)
-      const tile = this.tiles.get(item.fruit.id)
-      const x = tile ? tile.x : G.colX(item.col)
-      const y = tile ? tile.y : G.boardTop + 10
-      const hammer = this.add.image(x + 60, y - 120, 'pu_dynamite').setScale((G.tile * 0.9) / 256).setAngle(-40)
-      this.fxLayer.add(hammer)
-      this.tweens.add({
-        targets: hammer,
-        x,
-        y: y - 10,
-        angle: 20,
-        delay: i * 140,
-        duration: 260,
-        ease: 'Back.easeIn',
-        onComplete: () => {
-          hammer.destroy()
-          this.cameras.main.shake(120, 0.006)
-          haptic('powerup')
-          juiceBurst(this, this.fxLayer, x, y, FRUIT_COLORS[res.type] ?? 0xFFFFFF, 1.2)
-          burst(this, this.fxLayer, x, y, { texture: 'fx_star', tint: 0xFFE066, count: 8, speed: { min: 120, max: 260 }, scale: { start: 0.5, end: 0 }, gravityY: 300 })
-          if (tile) {
-            this.tiles.delete(item.fruit.id)
-            this.tweens.killTweensOf(tile)
-            this.tweens.add({ targets: tile, scale: 0, angle: 90, alpha: 0, duration: 200, onComplete: () => tile.destroy() })
-          }
-        },
-      })
+    const color = FRUIT_COLORS[res.type] ?? 0xFFFFFF
+    const target = this.tiles.get(tappedId)
+    const tx = target ? target.x : this.L.cx
+    const ty = target ? target.y : G.boardTop + 40
+
+    // sepetteki aynı tür meyveler: patlamayı bekler (yerleri korunur)
+    const trayEntries = this.vTray.filter(e => res.fromTray.some(f => f.id === e.fruit.id))
+    trayEntries.forEach((e) => {
+      e.popping = true
+      this.tweens.add({ targets: e.sprite, y: e.sprite.y - 8, duration: 150, yoyo: true, repeat: 1 })
     })
-    this.time.delayedCall(res.items.length * 140 + 320, () => {
-      cols.forEach(c => this.layoutColumn(c))
-      // gizli satırdan silinen meyveler için de sütunu güncelle
-      for (let c = 0; c < COLUMN_COUNT; c++) this.layoutColumn(c)
-      this.updateGoals(true)
-      floatText(this, this.fxLayer, this.L.cx, (G.boardTop + G.boardBottom) / 2, '+3', { size: 40, color: '#fff7c2', stroke: '#7a4a00' })
-      this.powerBusy = false
-      if (this.board.status === 'won' && !this.matchGroups.size)
-        this.onWon()
+
+    const dyn = this.add.image(tx + 80, ty - 190, 'pu_dynamite').setScale((G.tile * 1.15) / 256).setAngle(-55)
+    this.fxLayer.add(dyn)
+    this.tweens.add({
+      targets: dyn,
+      x: tx,
+      y: ty - 4,
+      angle: 10,
+      duration: 320,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        // fitil: kısa titreme + kıvılcım
+        burst(this, this.fxLayer, tx + 14, ty - 22, { texture: 'fx_sparkle', tint: 0xFFE066, count: 6, speed: { min: 40, max: 120 }, scale: { start: 0.4, end: 0 }, gravityY: 0, lifespan: 300 })
+        this.tweens.add({
+          targets: dyn,
+          scale: dyn.scale * 1.25,
+          angle: { from: -6, to: 6 },
+          duration: 70,
+          yoyo: true,
+          repeat: 2,
+          onComplete: () => {
+            dyn.destroy()
+            this.explodeSmash(res, trayEntries, tx, ty, color)
+          },
+        })
+      },
     })
   }
 
+  explodeSmash(res, trayEntries, tx, ty, color) {
+    const G = this.G
+    sfx('pop_effect')
+    haptic('powerup')
+    this.cameras.main.shake(180, 0.009)
+    const flash = this.add.circle(tx, ty, G.tile * 0.4, 0xFFFFFF, 0.9)
+    this.fxLayer.add(flash)
+    this.tweens.add({ targets: flash, radius: G.tile * 1.6, alpha: 0, duration: 320, ease: 'Cubic.easeOut', onComplete: () => flash.destroy() })
+    burst(this, this.fxLayer, tx, ty, { texture: 'fx_star', tint: [0xFFE066, 0xFF9F1C, 0xFFFFFF], count: 14, speed: { min: 160, max: 360 }, scale: { start: 0.6, end: 0 }, gravityY: 350 })
+
+    res.fromBoard.forEach((item, i) => {
+      const tile = this.tiles.get(item.fruit.id)
+      if (tile) {
+        this.tiles.delete(item.fruit.id)
+        this.tweens.killTweensOf(tile)
+      }
+      this.time.delayedCall(i * 90, () => {
+        const x = tile ? tile.x : G.colX(item.col)
+        const y = tile ? tile.y : G.boardTop + 10
+        juiceBurst(this, this.fxLayer, x, y, color, 1.15)
+        if (tile)
+          this.tweens.add({ targets: tile, scale: 0, angle: 120, alpha: 0, duration: 220, ease: 'Back.easeIn', onComplete: () => tile.destroy() })
+      })
+    })
+    trayEntries.forEach((e, i) => {
+      this.time.delayedCall(120 + i * 90, () => {
+        juiceBurst(this, this.fxLayer, e.sprite.x, G.trayY, color, 0.9)
+        this.tweens.add({ targets: e.sprite, scale: 0, alpha: 0, duration: 200, ease: 'Back.easeIn', onComplete: () => e.sprite.destroy() })
+      })
+    })
+
+    this.time.delayedCall(Math.max(res.fromBoard.length, trayEntries.length + 1) * 90 + 260, () => {
+      this.vTray = this.vTray.filter(e => !trayEntries.includes(e))
+      this.layoutTray()
+      for (let c = 0; c < COLUMN_COUNT; c++)
+        this.layoutColumn(c)
+      this.updateGoals(true)
+      floatText(this, this.fxLayer, tx, ty - 10, '+3', { size: 34, color: '#fff7c2', stroke: '#7a4a00', rise: 50, hold: 300 })
+      this.powerBusy = false
+      this.updatePowerUpStates()
+      if (this.board.status === 'won' && !this.matchGroups.size)
+        this.onWon()
+      else
+        this.flushQueuedTap()
+    })
+  }
+
+  // --- Süpürge / Rüzgar ----------------------------------------------------------
   animateSweep(kind, affected) {
     const G = this.G
     this.powerBusy = true
     sfx(kind === 'brush' ? 'bush_powerup_effect' : 'wind_effect')
+    floatText(this, this.fxLayer, this.L.cx, G.boardTop + 40, t(kind), { size: 34, color: kind === 'brush' ? '#ffb3e6' : '#cfe3ff', stroke: '#3b230d', strokeW: 7, rise: 30, hold: 600 })
+    // etkilenecek karoları önce işaretle
+    affected.forEach((fruit) => {
+      const tile = this.tiles.get(fruit.id)
+      if (tile)
+        this.tweens.add({ targets: tile, scale: 1.08, duration: 140, yoyo: true, repeat: 1 })
+    })
     const icon = this.add.image(G.left - 60, (G.boardTop + G.boardBottom) / 2, powerUpKey(kind))
     icon.setScale((G.tile * 1.6) / 256)
     this.fxLayer.add(icon)
-    const duration = 900
+    const duration = 950
     const from = G.left - 60
     const to = G.right + 60
     const p = { t: 0 }
     const done = new Set()
+    const trail = this.add.particles(0, 0, kind === 'brush' ? 'fx_leaf' : 'fx_dot', {
+      follow: icon,
+      speed: { min: 20, max: 80 },
+      scale: { start: kind === 'brush' ? 0.6 : 0.5, end: 0 },
+      alpha: { start: 0.8, end: 0 },
+      lifespan: 500,
+      frequency: 30,
+      tint: kind === 'brush' ? [0x4CAF50, 0x7CB342] : [0xE6F4FF, 0xBFD9FF],
+      rotate: { min: 0, max: 360 },
+    })
+    this.fxLayer.addAt(trail, this.fxLayer.getIndex(icon))
     this.tweens.add({
       targets: p,
       t: 1,
       duration,
+      delay: 200,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
         icon.x = from + (to - from) * p.t
@@ -945,6 +1261,8 @@ export default class GameScene extends BaseScene {
         })
       },
       onComplete: () => {
+        trail.stop()
+        this.time.delayedCall(600, () => trail.destroy())
         this.tweens.add({ targets: icon, alpha: 0, duration: 200, onComplete: () => icon.destroy() })
         affected.forEach((fruit) => {
           const tile = this.tiles.get(fruit.id)
@@ -952,7 +1270,10 @@ export default class GameScene extends BaseScene {
             this.clearBlockVisual(tile)
         })
         this.updateGoals(true)
+        toastService.show(t(kind === 'brush' ? 'all_bushes_removed' : 'all_blocks_removed'), 'success', 1500)
         this.powerBusy = false
+        this.updatePowerUpStates()
+        this.flushQueuedTap()
       },
     })
   }
@@ -1038,7 +1359,10 @@ export default class GameScene extends BaseScene {
     this.phase = 'ended'
     this.stopHint()
     const p = player()
+    const before = p.profile.gameLevel
     p.completeLevel(this.level, this.board.collected)
+    if (p.profile.gameLevel > before)
+      this.registry.set('levelUpFrom', before)
     sfx('levelup_effect')
     haptic('success')
     this.dangerTween?.stop()
@@ -1068,9 +1392,20 @@ export default class GameScene extends BaseScene {
     })
   }
 
+  /** Seviye sonu butonları: (sıklık kuralına uyuyorsa) geçiş reklamı, sonra sahne. */
+  async leaveLevel(key, data) {
+    if (this.leaving)
+      return
+    this.leaving = true
+    await levelEndInterstitial()
+    if (this.sys.isActive())
+      this.go(key, data)
+  }
+
   showWinModal() {
     this.endModalKind = 'win'
-    const modal = new Modal(this, { w: 340, h: 470, title: `${t('level')} ${this.level}`, color: 'green', closable: false })
+    const withAd = canWatchAds() && !this.doubled
+    const modal = new Modal(this, { w: 340, h: withAd || this.doubled ? 540 : 470, title: `${t('level')} ${this.level}`, color: 'green', closable: false })
     modal.kind = 'win'
     const top = modal.innerTop
     sunburst(this, modal.body, 0, top + 62, 130, { color: 0xFFE9A0, alpha: 0.45 })
@@ -1091,6 +1426,7 @@ export default class GameScene extends BaseScene {
     const perRow = Math.min(5, Math.max(1, collected.length))
     const rows = Math.ceil(collected.length / perRow)
     const cell = Math.min(54, (modal.w - 70) / perRow)
+    const counts = []
     collected.forEach(([type, n], i) => {
       const r = Math.floor(i / perRow)
       const inRow = Math.min(perRow, collected.length - r * perRow)
@@ -1098,7 +1434,8 @@ export default class GameScene extends BaseScene {
       const cy = boxTop + 50 + r * (rows > 1 ? 44 : 0) + (rows > 1 ? 0 : 12)
       const icon = this.add.image(cx, cy, 'game-atlas', `${type}.png`)
       icon.setScale((cell * 0.62) / 256 * 1.2)
-      const cnt = makeText(this, cx + cell * 0.18, cy + cell * 0.22, `x${n}`, { size: 15, stroke: '#3b230d', strokeW: 3.5 })
+      const cnt = makeText(this, cx + cell * 0.18, cy + cell * 0.22, `x${this.doubled ? n * 2 : n}`, { size: 15, stroke: '#3b230d', strokeW: 3.5 })
+      counts.push({ cnt, n })
       modal.body.add([icon, cnt])
       for (const o of [icon, cnt]) {
         const sc = o.scale
@@ -1107,27 +1444,71 @@ export default class GameScene extends BaseScene {
       }
     })
 
+    if (withAd || this.doubled) {
+      const x2 = new Button(this, 0, modal.innerBottom - 156, {
+        w: modal.w - 70,
+        h: 56,
+        color: this.doubled ? 'grey' : 'purple',
+        label: this.doubled ? t('rewards_doubled') : t('double_rewards'),
+        glyph: this.doubled ? 'check' : 'play',
+        disabled: this.doubled,
+        onClick: async () => {
+          if (this.doubled)
+            return
+          x2.setDisabled(true)
+          const ok = await watchRewardedAd(this)
+          if (!ok || !this.sys.isActive()) {
+            x2.setDisabled(false)
+            return
+          }
+          this.doubleRewards(counts)
+          x2.setColor('grey').setLabel(t('rewards_doubled'))
+        },
+      })
+      modal.body.add(x2)
+    }
+
     const next = new Button(this, 0, modal.innerBottom - 92, {
       w: modal.w - 70,
       h: 62,
       color: 'green',
       label: t('next_level'),
       pulse: true,
-      onClick: () => this.go(SCENES.Game, { level: player().profile.gameLevel }),
+      onClick: () => this.leaveLevel(SCENES.Game, { level: player().profile.gameLevel }),
     })
     const home = new Button(this, 0, modal.innerBottom - 26, {
       w: modal.w - 110,
       h: 50,
       color: 'grey',
       label: t('home'),
-      onClick: () => this.go(SCENES.Menu),
+      onClick: () => this.leaveLevel(SCENES.Menu),
     })
     modal.body.add([next, home])
   }
 
+  /** Ödüllü reklam: bu seviyede toplanan meyveler bir kez daha envantere eklenir. */
+  doubleRewards(counts) {
+    const p = player()
+    for (const [type, n] of Object.entries(this.board.collected))
+      p.inventory.fruitInventory[type] = (p.inventory.fruitInventory[type] || 0) + n
+    p.saveToStorage()
+    this.doubled = true
+    sfx('success_effect')
+    counts.forEach(({ cnt, n }, i) => {
+      this.time.delayedCall(i * 70, () => {
+        cnt.setText(`x${n * 2}`).setColor('#9bff8a')
+        this.tweens.add({ targets: cnt, scale: { from: 1.6, to: 1 }, duration: 320, ease: 'Back.easeOut' })
+        const m = cnt.getWorldTransformMatrix()
+        burst(this, this.modalLayer, m.tx / this.L.s, m.ty / this.L.s, { texture: 'fx_star', tint: 0xFFE066, count: 5, speed: { min: 40, max: 120 }, scale: { start: 0.35, end: 0 }, gravityY: 0, lifespan: 400 })
+      })
+    })
+    toastService.show(t('rewards_doubled'), 'success', 1600)
+  }
+
   showContinueModal() {
     this.endModalKind = 'continue'
-    const modal = new Modal(this, { w: 330, h: 450, title: t('oh_no'), color: 'purple', closable: false })
+    const withAd = canWatchAds()
+    const modal = new Modal(this, { w: 330, h: withAd ? 520 : 450, title: t('oh_no'), color: 'purple', closable: false })
     modal.kind = 'continue'
     const top = modal.innerTop
     const msg = inkText(this, 0, top + 30, t('continue_message'), { size: 19, wrap: modal.w - 60, color: '#4c1d95' })
@@ -1163,18 +1544,19 @@ export default class GameScene extends BaseScene {
       },
     })
 
-    const diamonds = player().currencies.diamonds
-    const accept = new Button(this, 0, modal.innerBottom - 92, {
-      w: modal.w - 60,
-      h: 62,
+    const btnW = modal.w - 60
+    let y = modal.innerBottom - (withAd ? 158 : 92)
+    const accept = new Button(this, 0, y, {
+      w: btnW,
+      h: 60,
       color: 'purple',
       label: `${t('continue_for')} ${CONTINUE_COST}`,
       icon: 'ic_diamond',
       iconSize: 34,
       iconRight: true,
-      pulse: true,
+      pulse: !withAd,
       onClick: () => {
-        if (diamonds < CONTINUE_COST && player().currencies.diamonds < CONTINUE_COST) {
+        if (player().currencies.diamonds < CONTINUE_COST) {
           toastService.show(t('not_enough_diamonds'), 'error')
           shake(this, accept)
           return
@@ -1183,9 +1565,37 @@ export default class GameScene extends BaseScene {
         modal.close('accept')
       },
     })
+    modal.body.add(accept)
+    if (withAd) {
+      y += 66
+      const ad = new Button(this, 0, y, {
+        w: btnW,
+        h: 60,
+        color: 'green',
+        label: t('continue_with_ad'),
+        glyph: 'play',
+        pulse: true,
+        onClick: async () => {
+          timer.pause()
+          ad.setDisabled(true)
+          const ok = await watchRewardedAd(this)
+          if (!this.sys.isActive() || modal.closing)
+            return
+          if (ok) {
+            timer.stop()
+            modal.close('accept-ad')
+          }
+          else {
+            ad.setDisabled(false)
+            timer.resume()
+          }
+        },
+      })
+      modal.body.add(ad)
+    }
     const decline = new Button(this, 0, modal.innerBottom - 26, {
       w: modal.w - 110,
-      h: 48,
+      h: 46,
       color: 'red',
       label: t('no_thanks'),
       onClick: () => {
@@ -1193,19 +1603,19 @@ export default class GameScene extends BaseScene {
         modal.close('decline')
       },
     })
-    modal.body.add([accept, decline])
+    modal.body.add(decline)
     modal.opts.onClose = (result) => {
       timer.stop()
-      if (result === 'accept')
-        this.revive()
+      if (result === 'accept' || result === 'accept-ad')
+        this.revive(result === 'accept-ad')
       else
         this.time.delayedCall(150, () => this.showLoseModal())
     }
   }
 
-  revive() {
+  revive(byAd = false) {
     const p = player()
-    if (!p.spendCurrency('diamonds', CONTINUE_COST)) {
+    if (!byAd && !p.spendCurrency('diamonds', CONTINUE_COST)) {
       this.showLoseModal()
       return
     }
@@ -1246,6 +1656,7 @@ export default class GameScene extends BaseScene {
     this.time.delayedCall(700, () => {
       this.phase = 'playing'
       this.lastActionAt = this.time.now
+      this.updatePowerUpStates()
     })
   }
 
@@ -1265,14 +1676,14 @@ export default class GameScene extends BaseScene {
       label: t('try_again'),
       glyph: 'refresh',
       pulse: true,
-      onClick: () => this.go(SCENES.Game, { level: this.level }),
+      onClick: () => this.leaveLevel(SCENES.Game, { level: this.level }),
     })
     const home = new Button(this, 0, modal.innerBottom - 26, {
       w: modal.w - 110,
       h: 50,
       color: 'grey',
       label: t('home'),
-      onClick: () => this.go(SCENES.Menu),
+      onClick: () => this.leaveLevel(SCENES.Menu),
     })
     modal.body.add([heart, msg, retry, home])
   }
@@ -1281,6 +1692,8 @@ export default class GameScene extends BaseScene {
   // Duraklatma
   // ===========================================================================
   openPause() {
+    this.exitAim()
+    this.hidePowerTooltip()
     if (this.phase === 'ended' || this.modals.length)
       return
     const p = player()
@@ -1339,6 +1752,10 @@ export default class GameScene extends BaseScene {
   }
 
   onBack() {
+    if (this.phase === 'aiming') {
+      this.exitAim()
+      return
+    }
     if (this.phase === 'ended')
       return
     this.openPause()

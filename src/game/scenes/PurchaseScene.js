@@ -2,6 +2,7 @@ import { admobService } from '@/core/services/admobService'
 import { purchaseService } from '@/core/services/PurchaseService'
 import { toastService } from '@/core/services/ToastService'
 import { packageKey, powerUpKey, queueBackground } from '../assets'
+import { AD_REWARDS, canWatchAds, claimFreeDiamonds, claimFreeEnergy } from '../core/ads'
 import { SCENES } from '../config'
 import BaseScene from '../core/BaseScene'
 import { formatNumber, haptic, player, sfx, shop, t } from '../core/services'
@@ -10,8 +11,6 @@ import { drawCard, drawPill } from '../ui/draw'
 import { bob, burst } from '../ui/effects'
 import ScrollView from '../ui/ScrollView'
 import { fitText, inkText, makeText } from '../ui/text'
-
-const REWARDED_AD_DIAMONDS = 10
 
 const CURRENCY = {
   energy: { titleKey: 'purchase_energy_title', tint: 0x2F7DC2, badges: ['gold', 'energy'] },
@@ -70,15 +69,16 @@ export default class PurchaseScene extends BaseScene {
     const s = shop()
 
     // ödüllü reklam
-    const left = p.adsLeftToday
-    this.addCard({
-      icon: 'ic_diamonds',
-      title: t('watch_ad_free_diamonds'),
-      subtitle: t('watch_ad_free_diamonds_desc', { count: REWARDED_AD_DIAMONDS, left }),
-      color: 'blue',
-      button: { label: t('watch'), color: left > 0 ? 'blue' : 'grey', icon: 'ic_play' },
-      onBuy: btn => this.watchAd(btn),
-    })
+    if (canWatchAds()) {
+      const left = p.adsLeftToday
+      this.addCard({
+        icon: 'ic_diamonds',
+        title: t('watch_ad_free_diamonds'),
+        subtitle: t('watch_ad_free_diamonds_desc', { count: AD_REWARDS.diamonds, left }),
+        button: { label: t('watch'), color: left > 0 ? 'blue' : 'grey', icon: 'ic_play' },
+        onBuy: btn => this.watchAd(btn, claimFreeDiamonds),
+      })
+    }
 
     s.products.specialOffers.forEach((offer) => {
       const pu = offer.content?.powerUps?.[0]
@@ -117,6 +117,7 @@ export default class PurchaseScene extends BaseScene {
             const result = await purchaseService.purchase(util.revenueCatId)
             if (result.success) {
               player().removeAds()
+              admobService.onAdsRemoved()
               return { success: true, message: 'ads_removed' }
             }
             return { success: false, message: result.cancelled ? null : 'purchase_failed' }
@@ -151,6 +152,16 @@ export default class PurchaseScene extends BaseScene {
   buildEnergy() {
     const s = shop()
     const p = player()
+    if (canWatchAds()) {
+      const full = p.energy.current >= p.energy.max
+      this.addCard({
+        icon: 'ic_energy',
+        title: t('free_energy'),
+        subtitle: t('free_energy_desc', { count: AD_REWARDS.energy }),
+        button: { label: t('watch'), color: full ? 'grey' : 'blue', icon: 'ic_play' },
+        onBuy: btn => this.watchAd(btn, claimFreeEnergy),
+      })
+    }
     this.addHeader(t('exchange_with_gold'))
     s.exchangeOffers.goldToEnergy.forEach((offer) => {
       const full = offer.energy >= p.energy.max
@@ -272,26 +283,21 @@ export default class PurchaseScene extends BaseScene {
       this.refreshCurrencies()
   }
 
-  async watchAd(btn) {
-    const p = player()
-    if (p.adsLeftToday <= 0) {
-      toastService.show(t('daily_ad_limit_reached'), 'warning')
+  async watchAd(btn, claim) {
+    if (this.busy)
       return
+    this.busy = true
+    btn.setDisabled(true)
+    const ok = await claim(this)
+    this.busy = false
+    if (!this.sys.isActive())
+      return
+    btn.setDisabled(false)
+    if (ok) {
+      this.celebrate(btn)
+      // kalan hak / dolu enerji durumunu güncellemek için ekranı yeniden kur
+      this.time.delayedCall(700, () => this.scene.restart({ ...this.getState(), instant: true }))
     }
-    let rewarded = false
-    await this.runPurchase(btn, async () => {
-      rewarded = await admobService.showRewardedAd()
-      if (!rewarded)
-        return { success: false, message: 'ads_watch_error' }
-      p.recordAdWatch()
-      p.addCurrency('diamonds', REWARDED_AD_DIAMONDS)
-      p.saveToStorage()
-      toastService.show(t('earned_diamonds', { count: REWARDED_AD_DIAMONDS }), 'success')
-      return { success: true }
-    })
-    // kalan hak sayısını güncellemek için ekranı yeniden kur
-    if (rewarded && this.sys.isActive())
-      this.time.delayedCall(900, () => this.scene.restart({ ...this.getState(), instant: true }))
   }
 
   celebrate(btn) {

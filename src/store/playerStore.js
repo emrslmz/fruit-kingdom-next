@@ -52,6 +52,7 @@ export const usePlayerStore = defineStore('player', {
       levelData: {},
       claimedLevelRewards: [],
       lastFreeCaseOpenTime: 0, // YENİ: Son ücretsiz kutu açılış zamanı
+      seenTips: [], // Gösterilmiş tanıtımlar (örn. güçlendirmelerin ilk kullanımı)
     },
     stats: {
       totalOrdersCompleted: 0,
@@ -431,6 +432,19 @@ export const usePlayerStore = defineStore('player', {
         this.ads.watchedToday++
       }
       this.saveToStorage()
+    },
+
+    hasSeenTip(id) {
+      return (this.profile.seenTips || []).includes(id)
+    },
+
+    markTipSeen(id) {
+      if (!this.profile.seenTips)
+        this.profile.seenTips = []
+      if (!this.profile.seenTips.includes(id)) {
+        this.profile.seenTips.push(id)
+        this.saveToStorage()
+      }
     },
 
     canOpenFreeCase() {

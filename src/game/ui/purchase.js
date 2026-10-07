@@ -1,5 +1,6 @@
 import { toastService } from '@/core/services/ToastService'
 import { powerUpKey } from '../assets'
+import { canWatchAds, watchRewardedAd } from '../core/ads'
 import { player, sfx, shop, t } from '../core/services'
 import Button from './Button'
 import Modal from './Modal'
@@ -14,9 +15,10 @@ export function openPowerUpPurchase(scene, powerUpId, o = {}) {
   if (!item)
     return null
   let qty = 1
+  const withAd = o.allowAd !== false && canWatchAds()
   const modal = new Modal(scene, {
     w: 330,
-    h: 430,
+    h: withAd ? 500 : 430,
     title: t(item.name),
     color: 'blue',
     onClose: o.onClose,
@@ -40,6 +42,30 @@ export function openPowerUpPurchase(scene, powerUpId, o = {}) {
   const totalY = stepY + 50
   const totalIcon = scene.add.image(0, totalY, 'ic_diamond').setScale(30 / 256)
   const totalText = makeText(scene, 0, totalY, '', { size: 24, stroke: '#3b230d', strokeW: 5, shadowY: 2 })
+  if (withAd) {
+    const ad = new Button(scene, 0, modal.innerBottom - 96, {
+      w: modal.w - 70,
+      h: 56,
+      color: 'purple',
+      label: `${t('free_with_ad')} +1`,
+      glyph: 'play',
+      onClick: async () => {
+        ad.setDisabled(true)
+        const ok = await watchRewardedAd(scene)
+        if (modal.closed)
+          return
+        ad.setDisabled(false)
+        if (!ok)
+          return
+        player().addPowerUp(item.id, 1)
+        sfx('success_effect')
+        toastService.show(`${t(item.name)} +1`, 'success', 1600)
+        o.onPurchased?.(item.id, 1)
+        modal.close(true)
+      },
+    })
+    modal.body.add(ad)
+  }
   const buy = new Button(scene, 0, modal.innerBottom - 30, {
     w: modal.w - 70,
     h: 60,

@@ -76,6 +76,16 @@ alınır), buz (her dokunuş bir kademe kırar); Balyoz/Süpürge/Rüzgar güçl
 50 elmasla devam (sepetteki son 3 meyve tahtaya döner). `GameScene` sadece modelin
 sonuçlarını canlandırır — kural değişikliğini modelde yap.
 
+## Reklamlar
+
+AdMob mantığı `core/services/admobService.js`'te (onay formu, ATT, önden yükleme,
+banner yüksekliği, geçiş reklamı sıklığı); sahneler doğrudan değil
+`game/core/ads.js` üzerinden kullanır (`watchRewardedAd`, `canWatchAds`,
+`levelEndInterstitial`, `claimFreeDiamonds`…). Yeni bir ödüllü reklam yerleşimi
+eklerken bu yardımcıları kullan — yükleniyor göstergesi, müzik durdurma ve hata
+mesajı orada. Geliştirmede (web) gerçek reklam yok; Overlay sahnesi sahte bir
+reklam ekranı gösterir. Ayrıntı: `IMPORTANT_SYSTEMS.md` §2.
+
 ## Geliştirme / test
 
 - `npm run dev` → `http://localhost:5757`. Geliştirme modunda `?scene=Game` gibi bir

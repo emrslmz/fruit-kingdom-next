@@ -1,225 +1,191 @@
-import { AdMob, BannerAdPosition, BannerAdSize } from '@capacitor-community/admob'
-import { mobileService } from '@/core/services/MobileService'
-import { getAdIds } from './adIds'
+import {
+  AdMob,
+  AdmobConsentStatus,
+  BannerAdPluginEvents,
+  BannerAdPosition,
+  BannerAdSize,
+  InterstitialAdPluginEvents,
+  RewardAdPluginEvents,
+} from '@capacitor-community/admob'
+import { Capacitor } from '@capacitor/core'
 import { soundService } from '@/core/services/soundService'
-
-let initialized = false
+import { usePlayerStore } from '@/store/playerStore'
+import { getAdIds, useTestAds } from './adIds'
 
 /**
- * AdMob'u mobil platformlarda başlatır.
- * @returns {Promise<boolean>} Başlatma başarılı olursa true döner.
+ * AdMob reklam servisi.
+ *
+ *  - Açılışta bir kez: GDPR/UMP onay formu (gerekiyorsa) → iOS ATT izni → initialize.
+ *  - Geçiş (interstitial) ve ödüllü (rewarded) reklamlar önceden yüklenir, böylece
+ *    istenince anında açılır; gösterildikten sonra bir sonraki hemen yüklenir.
+ *  - Banner'ın gerçek yüksekliği (CSS px) `onBannerHeight` ile oyuna bildirilir,
+ *    oyun alanı tam o kadar yer ayırır.
+ *  - Geçiş reklamı sıklığı `maybeShowInterstitial` içindeki kurallarla sınırlanır.
+ *  - Web'de reklam yoktur; geliştirme modunda (npm run dev) oyunun çizdiği
+ *    sahte bir reklam ekranı gösterilir (`setWebPresenter`), akışlar tarayıcıda
+ *    test edilebilsin diye.
  */
-async function initialize() {
-  if (!mobileService.isNative) {
-    return false
-  }
-  if (initialized) {
-    return true
-  }
 
+const BANNER_MARGIN = 0
+const REWARDED_LOAD_TIMEOUT = 8000
+const RETRY_DELAY = 30000
+
+// Geçiş reklamı kuralları
+const INTERSTITIAL_EVERY_N_LEVEL_ENDS = 3 // her 3 seviye sonunda bir
+const INTERSTITIAL_MIN_GAP_MS = 90 * 1000 // iki geçiş reklamı arası en az 90 sn
+const INTERSTITIAL_SESSION_GRACE_MS = 60 * 1000 // açılıştan sonraki ilk 1 dk reklam yok
+const INTERSTITIAL_MIN_LEVEL = 4 // ilk 3 seviye reklamsız
+
+const state = {
+  initPromise: null,
+  initialized: false,
+  interstitialReady: false,
+  interstitialLoading: false,
+  rewardedReady: false,
+  rewardedLoad: null,
+  pendingInterstitial: null,
+  pendingRewarded: null,
+  bannerRequested: false,
+  bannerHeight: 0,
+  bannerStatus: 'idle', // idle | loading | loaded | failed
+  lastInterstitialAt: 0,
+  sessionStart: Date.now(),
+  levelEndsSinceInterstitial: 0,
+  consentStatus: AdmobConsentStatus.UNKNOWN,
+  consentFormAvailable: false,
+}
+
+const bannerListeners = new Set()
+let webPresenter = null
+
+const isNative = () => Capacitor.isNativePlatform()
+
+function adsRemoved() {
   try {
-    // GELİŞTİRME AŞAMASINDA TEST MODUNDA BAŞLATILMALI
-    await AdMob.initialize({
-      requestTrackingAuthorization: true,
-      initializeForTesting: false,
-    })
-    initialized = true
-    return true
+    return !!usePlayerStore().settings.adsRemoved
   }
   catch {
     return false
   }
 }
 
-/**
- * Bir ödüllü video reklamı hazırlar ve gösterir.
- * @returns {Promise<boolean>} Kullanıcı ödülü kazanırsa true, aksi takdirde false döner.
- */
-async function showRewardedAd() {
-  return new Promise((resolve) => {
-    let resolved = false
-    const safeResolve = (value) => {
-      if (resolved) return
-      resolved = true
-      resolve(value)
-    }
+function setBanner(height, status) {
+  const next = height > 0 ? Math.ceil(height + BANNER_MARGIN) : 0
+  if (next === state.bannerHeight && status === state.bannerStatus)
+    return
+  state.bannerHeight = next
+  state.bannerStatus = status
+  bannerListeners.forEach(fn => fn(next, status))
+}
 
-    const logic = async () => {
-      if (mobileService.isWeb) {
-        soundService.stopMusic()
-        setTimeout(() => {
-          soundService.resumeAfterAd()
-          safeResolve(true)
-        }, 2000)
-        return
-      }
+function registerListeners() {
+  AdMob.addListener(BannerAdPluginEvents.SizeChanged, (size) => {
+    if (state.bannerRequested && size?.height > 0)
+      setBanner(size.height, 'loaded')
+  })
+  AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => {
+    if (state.bannerRequested)
+      setBanner(0, 'failed')
+  })
 
-      const timeoutId = setTimeout(() => {
-        cleanup()
-        safeResolve(false)
-      }, 30000)
+  AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => finishInterstitial(true))
+  AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, () => finishInterstitial(false))
 
-      const isInitialized = await initialize()
-      if (!isInitialized) {
-        clearTimeout(timeoutId)
-        safeResolve(false)
-        return
-      }
+  AdMob.addListener(RewardAdPluginEvents.Rewarded, () => {
+    if (state.pendingRewarded)
+      state.pendingRewarded.rewarded = true
+  })
+  AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finishRewarded())
+  AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => finishRewarded())
+}
 
-      let rewardGiven = false
-      let rewardListener = null
-      let dismissListener = null
+/** Onay formu + ATT + AdMob.initialize. Birden çok çağrılabilir, tek kez çalışır. */
+async function initialize() {
+  if (!isNative())
+    return false
+  if (state.initPromise)
+    return state.initPromise
 
-      const cleanup = async () => {
-        clearTimeout(timeoutId)
-        rewardListener?.remove()
-        dismissListener?.remove()
-      }
-
+  state.initPromise = (async () => {
+    try {
       try {
-        const adId = getAdIds().fruitKingdomRewarded
-        if (!adId) {
-          await cleanup()
-          safeResolve(false)
-          return
+        const info = await AdMob.requestConsentInfo()
+        state.consentStatus = info.status
+        state.consentFormAvailable = !!info.isConsentFormAvailable
+        if (info.isConsentFormAvailable && info.status === AdmobConsentStatus.REQUIRED) {
+          const after = await AdMob.showConsentForm()
+          state.consentStatus = after.status
         }
-
-        // Test ID'leri kullanıldığı için 'isTesting' true olmalıdır.
-        const adOptions = { adId, isTesting: false }
-
-        rewardListener = await AdMob.addListener('rewardedVideoAdRewarded', (reward) => {
-          rewardGiven = true
-        })
-
-        dismissListener = await AdMob.addListener('rewardedVideoAdDismissed', () => {
-          cleanup()
-          // Reklam bittikten sonra müziği tekrar başlat
-          soundService.resumeAfterAd()
-          safeResolve(rewardGiven)
-        })
-
-        await AdMob.prepareRewardVideoAd(adOptions)
-        soundService.stopMusic()
-        await AdMob.showRewardVideoAd()
       }
       catch {
-        cleanup()
-        safeResolve(false)
+        // onay bilgisi alınamadı (ağ yok vb.) — kişiselleştirilmemiş reklamla devam
       }
+
+      if (Capacitor.getPlatform() === 'ios') {
+        try {
+          const { status } = await AdMob.trackingAuthorizationStatus()
+          if (status === 'notDetermined')
+            await AdMob.requestTrackingAuthorization()
+        }
+        catch {
+          // ATT desteklenmiyor
+        }
+      }
+
+      await AdMob.initialize({ initializeForTesting: useTestAds() })
+      registerListeners()
+      state.initialized = true
+      if (!adsRemoved())
+        preloadInterstitial()
+      preloadRewarded()
+      return true
     }
-
-    logic().catch((error) => {
-      console.error('❗ showRewardedAd mantık hatası:', error)
-      safeResolve(false)
-    })
-  })
+    catch (error) {
+      console.warn('[AdMob] başlatılamadı:', error)
+      state.initPromise = null
+      return false
+    }
+  })()
+  return state.initPromise
 }
 
-/**
- * Bir geçiş reklamı hazırlar ve gösterir.
- * @returns {Promise<boolean>} Reklam başarıyla gösterilirse true döner.
- */
-async function showInterstitialAd() {
-  if (mobileService.isWeb) {
-    soundService.stopMusic()
-    setTimeout(() => {
-      soundService.resumeAfterAd()
-    }, 1000)
+// -----------------------------------------------------------------------------
+// Banner
+// -----------------------------------------------------------------------------
+async function showBanner() {
+  if (!isNative() || adsRemoved())
+    return false
+  if (state.bannerRequested)
     return true
-  }
-
-  if (!await initialize()) {
+  if (!await initialize())
     return false
-  }
-
-  const adId = getAdIds().fruitKingdomInterstitial
-  if (!adId) {
+  const { banner } = getAdIds()
+  if (!banner)
     return false
-  }
-
-  return new Promise((resolve) => {
-    (async () => {
-      try {
-        const listener = await AdMob.addListener('interstitialAdDismissed', () => {
-          listener.remove()
-          // Interstitial reklam bittikten sonra müziği tekrar başlat
-          soundService.resumeAfterAd()
-          resolve(true)
-        })
-
-        await AdMob.prepareInterstitial({ adId, isTesting: false })
-        // Interstitial reklamdan önce müziği durdur
-        soundService.stopMusic()
-        await AdMob.showInterstitial()
-      }
-      catch {
-        resolve(false) // Hata durumunda bile devam et
-      }
-    })()
-  })
-}
-
-/**
- * Bir banner reklamı gösterir.
- * @returns {Promise<boolean>} Banner başarıyla gösterilirse true döner.
- */
-async function showBannerAd() {
-  if (mobileService.isWeb) {
-    return true
-  }
-
-  if (!await initialize()) {
-    return false
-  }
-
-  const adId = getAdIds().fruitKingdomBanner
-  if (!adId) {
-    return false
-  }
-
   try {
+    state.bannerRequested = true
+    setBanner(state.bannerHeight, state.bannerHeight ? 'loaded' : 'loading')
     await AdMob.showBanner({
-      adId,
+      adId: banner,
       adSize: BannerAdSize.ADAPTIVE_BANNER,
       position: BannerAdPosition.BOTTOM_CENTER,
-      isTesting: false, // GELİŞTİRME İÇİN TRUE OLMALI
-      margin: 10,
+      margin: BANNER_MARGIN,
+      isTesting: useTestAds(),
     })
     return true
   }
   catch {
+    state.bannerRequested = false
+    setBanner(0, 'failed')
     return false
   }
 }
 
-/**
- * Gösterilmekte olan banner reklamını gizler.
- * @returns {Promise<boolean>} Banner başarıyla gizlenirse true döner.
- */
-async function hideBannerAd() {
-  if (mobileService.isWeb) {
+async function hideBanner() {
+  if (!isNative() || !state.bannerRequested)
     return true
-  }
-
-  try {
-    await AdMob.hideBanner()
-    return true
-  }
-  catch (error) {
-    console.warn('Could not hide banner ad:', error.message)
-    return false
-  }
-}
-
-/**
- * Banner reklamını kaldırır ve hafızadan temizler.
- * @returns {Promise<boolean>} Banner başarıyla kaldırılırsa true döner.
- */
-async function removeBannerAd() {
-  if (mobileService.isWeb) {
-    return true
-  }
-
+  state.bannerRequested = false
+  setBanner(0, 'idle')
   try {
     await AdMob.removeBanner()
     return true
@@ -229,11 +195,208 @@ async function removeBannerAd() {
   }
 }
 
+/**
+ * Banner yüksekliği (CSS px) veya durumu değiştiğinde `(height, status)` ile çağrılır.
+ * Aboneliği iptal eden fonksiyon döner.
+ */
+function onBannerHeight(listener) {
+  bannerListeners.add(listener)
+  return () => bannerListeners.delete(listener)
+}
+
+// -----------------------------------------------------------------------------
+// Geçiş reklamı
+// -----------------------------------------------------------------------------
+function preloadInterstitial() {
+  if (!state.initialized || state.interstitialReady || state.interstitialLoading)
+    return
+  const { interstitial } = getAdIds()
+  if (!interstitial)
+    return
+  state.interstitialLoading = true
+  AdMob.prepareInterstitial({ adId: interstitial, isTesting: useTestAds() })
+    .then(() => { state.interstitialReady = true })
+    .catch(() => setTimeout(preloadInterstitial, RETRY_DELAY))
+    .finally(() => { state.interstitialLoading = false })
+}
+
+function finishInterstitial(shown) {
+  const resolve = state.pendingInterstitial
+  state.pendingInterstitial = null
+  state.interstitialReady = false
+  soundService.resumeAfterAd()
+  preloadInterstitial()
+  resolve?.(shown)
+}
+
+async function showInterstitial() {
+  if (adsRemoved())
+    return false
+  if (!isNative())
+    return webPresenter ? webPresenter('interstitial') : false
+  if (!state.interstitialReady) {
+    preloadInterstitial()
+    return false
+  }
+  soundService.stopMusic()
+  return new Promise((resolve) => {
+    state.pendingInterstitial = resolve
+    setTimeout(() => state.pendingInterstitial === resolve && finishInterstitial(false), 120000)
+    AdMob.showInterstitial().catch(() => finishInterstitial(false))
+  })
+}
+
+/**
+ * Seviye sonu gibi doğal bir arada çağrılır; sıklık kurallarına uyuyorsa
+ * geçiş reklamını gösterir. Reklam kapanınca (veya gösterilmezse) resolve olur.
+ */
+async function maybeShowInterstitial() {
+  if (adsRemoved())
+    return false
+  state.levelEndsSinceInterstitial++
+  const now = Date.now()
+  let level = 1
+  try {
+    level = usePlayerStore().profile.gameLevel
+  }
+  catch {}
+  const allowed = level >= INTERSTITIAL_MIN_LEVEL
+    && state.levelEndsSinceInterstitial >= INTERSTITIAL_EVERY_N_LEVEL_ENDS
+    && now - state.lastInterstitialAt >= INTERSTITIAL_MIN_GAP_MS
+    && now - state.sessionStart >= INTERSTITIAL_SESSION_GRACE_MS
+  if (!allowed)
+    return false
+  const shown = await showInterstitial()
+  if (shown) {
+    state.levelEndsSinceInterstitial = 0
+    state.lastInterstitialAt = Date.now()
+  }
+  return shown
+}
+
+// -----------------------------------------------------------------------------
+// Ödüllü reklam
+// -----------------------------------------------------------------------------
+function preloadRewarded() {
+  if (!state.initialized)
+    return Promise.resolve(false)
+  if (state.rewardedReady)
+    return Promise.resolve(true)
+  if (state.rewardedLoad)
+    return state.rewardedLoad
+  const { rewarded } = getAdIds()
+  if (!rewarded)
+    return Promise.resolve(false)
+  state.rewardedLoad = AdMob.prepareRewardVideoAd({ adId: rewarded, isTesting: useTestAds() })
+    .then(() => {
+      state.rewardedReady = true
+      return true
+    })
+    .catch(() => {
+      setTimeout(preloadRewarded, RETRY_DELAY)
+      return false
+    })
+    .finally(() => { state.rewardedLoad = null })
+  return state.rewardedLoad
+}
+
+function finishRewarded() {
+  const pending = state.pendingRewarded
+  state.pendingRewarded = null
+  state.rewardedReady = false
+  soundService.resumeAfterAd()
+  preloadRewarded()
+  pending?.resolve(!!pending.rewarded)
+}
+
+/** Ödüllü reklam bu platformda gösterilebilir mi (butonları göstermek için). */
+function rewardedAvailable() {
+  return isNative() || !!webPresenter
+}
+
+/**
+ * Ödüllü reklam gösterir. Kullanıcı reklamı sonuna kadar izlerse `true` döner.
+ * @param {{ onLoading?: (loading: boolean) => void }} [o]
+ */
+async function showRewarded(o = {}) {
+  if (!isNative())
+    return webPresenter ? webPresenter('rewarded') : false
+  if (!await initialize())
+    return false
+  if (!state.rewardedReady) {
+    o.onLoading?.(true)
+    const loaded = await Promise.race([
+      preloadRewarded(),
+      new Promise(resolve => setTimeout(() => resolve(false), REWARDED_LOAD_TIMEOUT)),
+    ])
+    o.onLoading?.(false)
+    if (!loaded)
+      return false
+  }
+  soundService.stopMusic()
+  return new Promise((resolve) => {
+    const pending = { resolve, rewarded: false }
+    state.pendingRewarded = pending
+    setTimeout(() => state.pendingRewarded === pending && finishRewarded(), 180000)
+    // Not: showRewardVideoAd sadece ödül kazanılınca resolve olur; kapanışı
+    // Dismissed olayından yakalıyoruz.
+    AdMob.showRewardVideoAd().catch(() => finishRewarded())
+  })
+}
+
+// -----------------------------------------------------------------------------
+// Gizlilik (UMP) — Ayarlar'dan onay tercihini yeniden açmak için
+// -----------------------------------------------------------------------------
+function privacyOptionsAvailable() {
+  return isNative() && state.consentFormAvailable && state.consentStatus !== AdmobConsentStatus.NOT_REQUIRED
+}
+
+async function showPrivacyOptions() {
+  if (!privacyOptionsAvailable())
+    return false
+  try {
+    const info = await AdMob.showConsentForm()
+    state.consentStatus = info.status
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+/** Reklamlar satın alınarak kaldırılınca çağrılır. */
+async function onAdsRemoved() {
+  await hideBanner()
+}
+
+/** Web/geliştirme için sahte reklam gösterici: (kind) => Promise<boolean>. */
+function setWebPresenter(presenter) {
+  webPresenter = presenter
+}
+
 export const admobService = {
   initialize,
-  showRewardedAd,
-  showInterstitialAd,
-  showBannerAd,
-  hideBannerAd,
-  removeBannerAd,
+  showBanner,
+  hideBanner,
+  onBannerHeight,
+  get bannerHeight() {
+    return state.bannerHeight
+  },
+  get bannerStatus() {
+    return state.bannerStatus
+  },
+  maybeShowInterstitial,
+  showInterstitial,
+  showRewarded,
+  rewardedAvailable,
+  privacyOptionsAvailable,
+  showPrivacyOptions,
+  onAdsRemoved,
+  setWebPresenter,
+  // eski isimler (geriye dönük uyumluluk)
+  showRewardedAd: showRewarded,
+  showInterstitialAd: showInterstitial,
+  showBannerAd: showBanner,
+  hideBannerAd: hideBanner,
+  removeBannerAd: hideBanner,
 }

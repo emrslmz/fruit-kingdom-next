@@ -226,6 +226,42 @@ export default class Board {
     return { type: choice.type, items: choice.items, status: this.status }
   }
 
+  /**
+   * Balyoz (nişan alarak): dokunulan meyvenin türünden bir 3'lü toplar.
+   * Önce sepetteki aynı türden meyveler kullanılır (sepette yer açar), eksik
+   * kalanlar tahtadan alınır — önce dokunulan meyve, sonra görünen en alttakiler.
+   * Çalı/buz engel değildir; balyoz kırar.
+   * @param {string} id dokunulan meyve
+   * @param {number} maxRow görünen satır sayısı
+   */
+  smash(id, maxRow = Infinity) {
+    if (this.status !== 'playing')
+      return null
+    const loc = this.locate(id)
+    if (!loc)
+      return null
+    const type = loc.fruit.type
+    const fromTray = this.tray.filter(f => f.type === type).slice(0, 2)
+    const need = 3 - fromTray.length
+    const others = []
+    this.columns.forEach((col, c) => col.forEach((fruit, r) => {
+      if (fruit.type === type && fruit.id !== id)
+        others.push({ fruit, col: c, row: r })
+    }))
+    others.sort((a, b) => (Number(a.row >= maxRow) - Number(b.row >= maxRow)) || a.row - b.row)
+    const fromBoard = [{ fruit: loc.fruit, col: loc.col, row: loc.row }, ...others].slice(0, need)
+    if (fromBoard.length < need)
+      return null
+
+    const boardIds = new Set(fromBoard.map(i => i.fruit.id))
+    this.columns = this.columns.map(col => col.filter(f => !boardIds.has(f.id)))
+    this.tray = this.tray.filter(f => !fromTray.includes(f))
+    this._addCollected(type, 3)
+    this.matches++
+    this._checkWin()
+    return { type, fromTray, fromBoard, status: this.status }
+  }
+
   /** Süpürge: tüm çalıları kaldırır. */
   clearBushes() {
     const affected = this.columns.flat().filter(f => f.bush)

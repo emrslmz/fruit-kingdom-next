@@ -1,3 +1,4 @@
+import { admobService } from '@/core/services/admobService'
 import { languageService } from '@/core/services/LanguageService'
 import { mobileService } from '@/core/services/MobileService'
 import notificationService from '@/core/services/notificationService'
@@ -43,6 +44,9 @@ export default class SettingsScene extends BaseScene {
       { key: 'language', icon: 'ic_earth', type: 'language' },
       { key: 'privacy_policy', icon: 'badge_info', type: 'link', action: () => this.openPrivacy() },
     ]
+    // GDPR bölgelerinde reklam onay tercihlerini yeniden açabilme (UMP zorunluluğu)
+    if (admobService.privacyOptionsAvailable())
+      rows.push({ key: 'ad_privacy', icon: 'badge_cog', type: 'link', action: () => admobService.showPrivacyOptions() })
     const contentH = rows.length * (rowH + 10) + 20
     const avail = L.bottom - top - 30
     const panelH = Math.min(contentH + 40, avail)

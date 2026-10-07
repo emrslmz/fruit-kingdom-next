@@ -1,5 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { admobService } from '@/core/services/admobService'
 import { languageService } from '@/core/services/LanguageService'
 import notificationService from '@/core/services/notificationService'
 import { soundService } from '@/core/services/soundService'
@@ -17,7 +18,12 @@ async function initialize() {
   try {
     await playerStore.loadFromStorage()
     await languageService.initializeWithPlayerStore(playerStore)
+    // Sistem izin pencereleri üst üste binmesin: önce bildirim izni, sonra reklam
+    // onay formu (GDPR) + iOS takip izni + reklamların önden yüklenmesi.
+    // Oyunun açılmasını bekletmez.
     notificationService.requestInitialPermission()
+      .catch(() => {})
+      .finally(() => admobService.initialize())
   }
   catch (error) {
     console.error('Uygulama başlatılırken bir hata oluştu:', error)
