@@ -53,7 +53,7 @@ renkleriyle, her boyutta keskin, basılma animasyonlu). Renk anlamı değişmedi
 - `blue` → ikincil / bilgi (ayarlar, bilgi, yenile)
 - `grey` → pasif / nötr (Home, kapalı durum)
 - Pack'te olmayanlar `config.js → BTN` içinde: `purple` (devam et), `wood` (pasif sekme),
-  `cream` (ana ekran alt gezinme karoları — renkli ikon parşömen zeminde).
+  `cream` (ana ekran yan gezinme butonları — renkli ikon parşömen zeminde).
 
 Diğer yapı taşları: `Modal` (parşömen panel + kurdele başlık, `modal.body`'ye
 içerik eklenir), `CurrencyBadge` (sayı animasyonlu), `Toggle`, `ScrollView`
